@@ -71,6 +71,29 @@ def register_secret(secret: str | None) -> None:
     _redacting_filter.add_secret(secret)
 
 
+def enable_utf8_console() -> bool:
+    """Make stdout/stderr able to print non-Latin text on Windows.
+
+    A Persian transcript contains characters the default Windows console
+    codepage cannot encode; without this, printing a translated line raises
+    ``UnicodeEncodeError`` and the run dies at the worst moment. Returns
+    ``True`` when the streams were reconfigured.
+
+    Failures are ignored: a plain ASCII run must not depend on this.
+    """
+
+    if not hasattr(sys.stdout, "reconfigure"):
+        return False
+    reconfigured = False
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+            reconfigured = True
+        except (AttributeError, ValueError, OSError):  # pragma: no cover
+            continue
+    return reconfigured
+
+
 def setup_logging(log_dir: Path | None = None, verbose: bool = False) -> Path | None:
     """Configure console (and optional file) logging.
 

@@ -37,7 +37,7 @@ from .config import (
 )
 from .discovery import InputResolver
 from .errors import AlBrooksError, ConfigurationError
-from .logging_utils import register_secret, setup_logging
+from .logging_utils import enable_utf8_console, register_secret, setup_logging
 from .media import verify_executables
 from .pipeline import Phase1Pipeline, render_final_report
 from .preparation import TranscriptPreparer, render_preparation_report
@@ -213,6 +213,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    # Persian transcripts are UTF-8; the default Windows console codepage would
+    # raise UnicodeEncodeError the moment a translated line is printed.
+    enable_utf8_console()
     log_file = setup_logging(log_dir=args.log_dir, verbose=args.verbose)
 
     # Read the key early so that it can be redacted from every later message.

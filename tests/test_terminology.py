@@ -50,11 +50,41 @@ def test_brief_terms_are_present() -> None:
     assert expected <= found
 
 
-def test_persian_fields_are_empty_and_ready_to_fill() -> None:
+def test_brief_terms_have_approved_persian() -> None:
+    """The ten terms named in the brief must be translated before Phase 3."""
+
+    expected = {
+        "wedge_bull_flag": "پرچم صعودی گوه‌ای",
+        "bull_flag": "پرچم صعودی",
+        "bear_flag": "پرچم نزولی",
+        "trading_range": "محدودهٔ معاملاتی",
+        "measured_move": "حرکت اندازه‌گیری‌شده",
+        "price_action": "رفتار قیمت",
+        "gap": "گپ",
+        "breakout": "شکست",
+        "pullback": "پولبک",
+        "reversal": "برگشت",
+    }
     terms = load_terminology()
-    assert terms.summary()["translated_terms"] == 0
-    for entry in terms.entries:
-        assert entry.persian is None
+    for term_id, persian in expected.items():
+        entry = terms.get(term_id)
+        assert entry is not None, f"{term_id} missing from the glossary"
+        assert entry.persian == persian, f"{term_id} has the wrong Persian equivalent"
+
+
+def test_translation_count_is_reported() -> None:
+    summary = load_terminology().summary()
+    assert summary["translated_terms"] >= 10
+    assert summary["term_count"] > summary["translated_terms"]
+
+
+def test_persian_values_are_persian_script() -> None:
+    """Guards against a Latin fallback sneaking into the glossary."""
+
+    for entry in load_terminology().entries:
+        if not entry.persian:
+            continue
+        assert any("؀" <= char <= "ۿ" for char in entry.persian), entry.id
 
 
 def test_no_duplicate_ids_or_canonicals() -> None:
@@ -166,6 +196,30 @@ def test_summary_shape() -> None:
     summary = load_terminology().summary()
     assert summary["term_count"] > 20
     assert isinstance(summary["categories"], list)
+
+
+# ----------------------------------------------------------------------
+# Console encoding - Persian must survive the logging/print path
+# ----------------------------------------------------------------------
+def test_console_reconfiguration_is_safe() -> None:
+    """Reconfiguring the streams must never raise, even under pytest capture."""
+
+    from src.logging_utils import enable_utf8_console
+
+    assert isinstance(enable_utf8_console(), bool)
+
+
+def test_persian_survives_a_log_file(tmp_path: Path) -> None:
+    """A Persian term written through the writer must be readable as UTF-8."""
+
+    from src.outputs import OutputWriter
+
+    entry = load_terminology().get("wedge_bull_flag")
+    assert entry is not None and entry.persian
+    path = OutputWriter(tmp_path).write_transcript_text(
+        tmp_path / "fa.txt", f"{entry.canonical} = {entry.persian}"
+    )
+    assert entry.persian in path.read_text(encoding="utf-8")
 
 
 def test_len() -> None:

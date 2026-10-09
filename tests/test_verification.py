@@ -97,7 +97,11 @@ def test_alternative_without_duplicate_contradicts_it(
 def test_alternative_with_duplicate_confirms_it(
     raw: RawTranscript, groups: tuple[DuplicateGroup, ...]
 ) -> None:
-    """The real-world case: a second transcription repeats the same wording."""
+    """The real-world case: a second transcription repeats the same wording.
+
+    This is a verdict about the transcription, not proof about the audio: a
+    deterministic model repeats its own error, so a human must still listen.
+    """
 
     text = f"{DUP_TEXT} {DUP_TEXT} {UNIQUE_TEXT}"
     alt = alternative(
@@ -108,6 +112,8 @@ def test_alternative_with_duplicate_confirms_it(
 
     assert outcome.status is VerificationStatus.DUPLICATE_CONFIRMED
     assert outcome.status.supports_correction is False
+    assert "NOT proof" in outcome.detail
+    assert "human" in outcome.detail
 
 
 def test_alternative_with_fewer_repetitions_contradicts(

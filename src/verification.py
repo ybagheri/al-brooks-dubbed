@@ -29,12 +29,18 @@ logger = logging.getLogger(__name__)
 
 
 class VerificationStatus(StringEnum):
-    """Outcome of the optional cross-check."""
+    """Outcome of the optional cross-check.
+
+    These are verdicts about the *transcription*, not about the audio.
+    Re-running the same model can reproduce the same mistake, so a reproduced
+    duplication is not evidence that the speaker actually said it twice.
+    """
 
     NOT_PERFORMED = "not_performed"
     #: A fresh transcription did not repeat the suspect text.
     DUPLICATE_CONTRADICTED = "duplicate_contradicted"
-    #: A fresh transcription repeated the suspect text: it is in the audio.
+    #: A fresh transcription reproduced it. Inconclusive on its own, because a
+    #: deterministic model repeats its own error; a human must still listen.
     DUPLICATE_CONFIRMED = "duplicate_confirmed"
     #: The check ran but the evidence was not decisive.
     INCONCLUSIVE = "inconclusive"
@@ -270,8 +276,10 @@ def compare_with_alternative(
         status=VerificationStatus.DUPLICATE_CONFIRMED,
         method="grok_retranscription",
         detail=(
-            "An independent transcription of the same audio contains the same repeated "
-            "wording, which indicates the speaker really said it. Nothing is removed."
+            "Re-transcribing the same audio reproduced the same repeated wording. "
+            "That is NOT proof the speaker said it twice: the same model can be "
+            "deterministic and simply repeat its own mistake. Only a human "
+            "listening to the audio can settle it. Nothing is removed."
         ),
         attempts=attempts,
         model=alternative.model,
