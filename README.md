@@ -8,9 +8,9 @@ timestamps. It is the foundation for a later Persian dubbing workflow.
 
 ---
 
-## Phase 1 scope
+## Phases and scope
 
-Phase 1 does exactly two things:
+### Phase 1 — video extraction and English transcription ✅
 
 1. **Video extraction** - cut the first *N* seconds (default 30) out of the
    source video into a standalone, playable MP4 using FFmpeg.
@@ -18,18 +18,26 @@ Phase 1 does exactly two things:
    Groq speech-to-text API and save the transcript as UTF-8 text plus a
    structured JSON file.
 
-### Explicitly NOT in Phase 1
+### Phase 2 — transcript quality assurance and preparation ✅
 
-None of the following is implemented yet (see [ROADMAP.md](ROADMAP.md)):
+3. **Quality assurance** - detect duplicated segments, broken timestamps,
+   gaps, overlaps, transcript/segment mismatches and more, reported in a
+   structured JSON report.
+4. **Preparation** - deterministic formatting cleanup plus a cleaned,
+   translation-ready JSON schema that keeps every link back to the original
+   audio timing.
+5. **Optional verification** - an explicitly requested, bounded re-transcription
+   of the *same audio* that can turn real evidence into a correction.
+
+### Explicitly NOT implemented yet
+
+None of the following is implemented (see [ROADMAP.md](ROADMAP.md)):
 
 - Persian translation
 - Text-to-speech / speech synthesis
 - Voice cloning or voice conversion
 - Lip synchronisation
 - Full-video (multi-hour) dubbing
-
-Phase 1 exists to prove out the media and transcription plumbing on a real
-lecture before any of the harder, more expensive stages are attempted.
 
 ---
 
@@ -193,6 +201,8 @@ $env:GROQ_PROXY = "http://127.0.0.1:1080"
 
 All commands run from the project root.
 
+### Phase 1 — extract and transcribe
+
 ```powershell
 # Process the single video in .\data automatically
 python -m src.main
@@ -209,6 +219,27 @@ python -m src.main --overwrite
 # See what would be processed, or what is wrong with the setup
 python -m src.main --list-inputs
 python -m src.main --check-env
+```
+
+### Phase 2 — quality assurance and preparation
+
+Runs against an artifact Phase 1 already produced. **It makes no API call by
+default**, so it is free and safe to re-run.
+
+```powershell
+# Clean and analyse an existing transcript
+python -m src.main --prepare-transcript output\lecture_test_30s.en.json
+
+# Replace previous prepared output
+python -m src.main --prepare-transcript output\lecture_test_30s.en.json --overwrite
+
+# Additionally re-transcribe the same audio to check a suspected duplicate
+# (this DOES spend API usage)
+python -m src.main --prepare-transcript output\lecture_test_30s.en.json --verify-transcript
+
+# Point at a specific audio file, allow more than one verification pass
+python -m src.main --prepare-transcript output\lecture_test_30s.en.json `
+    --verify-transcript --audio output\lecture_test_30s.flac --verify-attempts 2
 
 # Full reference
 python -m src.main --help
@@ -228,7 +259,7 @@ Supported extensions: `.mp4 .mkv .mov .avi .webm .m4v .mpg .mpeg .ts .wmv
 
 ### The seven stages
 
-Every run reports each stage explicitly:
+Every Phase 1 run reports each stage explicitly:
 
 ```
 Stage 1/7  Input validation
@@ -250,7 +281,158 @@ Stage 7/7  Writing output artifacts
 | `3` | Input problem (missing directory, no video, ambiguous choice). |
 | `4` | Media problem (ffprobe/ffmpeg failure). |
 | `5` | Transcription problem (auth, network, empty response). |
-| `6` | Output problem (not writable, validation failed). |
+| `6` | Output problem (not writable, validation failed, existing artifact). |
+| `7` | Transcript problem (Phase 2: unreadable artifact, QA failure). |
+
+---
+
+## Phase 2: quality assurance and preparation
+
+### The one rule that matters
+
+**A suspect transcript is never silently changed.** Phase 1's output is the
+source of truth and is opened read-only. Phase 2 writes *new* files, and it
+only ever removes a repetition when an independent re-transcription of the same
+audio positively contradicts it. Otherwise the wording is preserved verbatim
+and flagged for a human to decide.
+
+### How to review an uncertain transcript
+
+```powershell
+python -m src.main --prepare-transcript output\lecture_test_30s.en.json
+```
+
+1. Read the **review notes** in the console output - they name the affected
+   segments and time ranges.
+2. Open the extracted video at the reported time range and **listen**.
+3. Only then decide whether to change anything. The cleaned text is a plain
+   UTF-8 file you can edit, but the JSON keeps the original per segment.
+
+If you want a second opinion from the API, add `--verify-transcript`. If the
+audio is not available the command says exactly what is missing instead of
+guessing.
+
+### What the QA stage checks
+
+| Finding | Severity | Meaning |
+|---|---|---|
+| `empty_segment` | medium | A segment has no text. |
+| `no_segments` | high / critical | No timing data, or the transcript is blank. |
+| `exact_duplicate_segment` | high / medium | Two segments carry identical words. |
+| `near_duplicate_segment` | high / medium | Segments are almost identical. |
+| `duplicate_segment_duration_mismatch` | high | The same words span very different times. |
+| `repeated_phrase` | low | A phrase occurs more than once in the combined text. |
+| `invalid_timestamp` | high | Missing, non-numeric, NaN or negative. |
+| `segment_end_before_start` | critical | The segment has no positive duration. |
+| `segment_out_of_order` | high | Segments are not in chronological order. |
+| `segment_timestamp_out_of_bounds` | high | A timestamp lies outside the audio. |
+| `segment_gap` | medium | Audio with no transcript covering it. |
+| `segment_overlap` | medium | Two segments claim the same audio. |
+| `transcript_segment_mismatch` | high / medium | The transcript and segments disagree. |
+| `segment_suspiciously_short` | low | An implausibly brief segment. |
+| `segment_suspiciously_long` | medium | Far longer than the median segment. |
+| `incomplete_speech_at_start` | medium | Transcription starts after 0s. |
+| `incomplete_speech_at_end` | medium | Transcription stops before the audio ends. |
+| `terminology_detected` | info | Al Brooks vocabulary was found and annotated. |
+
+Severity drives the run status: any `critical`, `high` or `medium` finding makes
+the CLI report `STATUS: NEEDS_REVIEW`.
+
+> Repetition is **not** automatically an error. Trading lectures deliberately
+> restate ideas and repeat terminology, so repeated phrases are reported at
+> `low` severity and never removed.
+
+### The cautious recovery strategy
+
+When duplicates are found, the tool will not guess:
+
+1. The duplicate and the unusually long segment are flagged (`high`).
+2. With `--verify-transcript`, the same audio is transcribed again, bounded by
+   `--verify-attempts` (permanent errors such as an invalid key are *not*
+   retried).
+3. The two transcriptions are compared occurrence by occurrence.
+4. The result is recorded as one of:
+   - `duplicate_contradicted` - the fresh transcript does not contain the
+     repetition. **Only now** may the duplicate segments be merged, and the
+     merge is recorded as `verified_by_retranscription`.
+   - `duplicate_confirmed` - the fresh transcript contains it too, so the
+     speaker really said it. **Nothing is removed.**
+   - `inconclusive` / `failed` - the evidence was not decisive. **Nothing is
+     removed** and the segments are flagged `uncertain_review_required`.
+
+A transcript is never described as verified unless a real transcription
+request actually completed.
+
+### Al Brooks terminology
+
+`src/resources/terminology.json` holds 35 domain terms (`wedge bull flag`,
+`bull flag`, `bear flag`, `trading range`, `measured move`, `price action`,
+`gap`, `breakout`, `pullback`, `reversal`, and more).
+
+Phase 2 uses it **only for annotation**. A term match never alters the source
+text. Each entry has an empty `"persian"` field ready for approved equivalents
+in the translation phase:
+
+```json
+{
+  "id": "bull_flag",
+  "canonical": "bull flag",
+  "category": "pattern",
+  "notes": "Strong bullish continuation flag after a spike.",
+  "persian": null
+}
+```
+
+Terms that are also ordinary English words (`gap`, `bull`, `channel`) are
+flagged as `ambiguous` so downstream stages do not over-trust them.
+
+### Cleaned JSON schema (version 2)
+
+`output/<name>_test_30s.en.clean.json`:
+
+| Field | Description |
+|---|---|
+| `schema_version` | Currently `2`. |
+| `artifact_type` | `prepared_transcript`. |
+| `generated_at` | UTC timestamp of the preparation run. |
+| `source_artifact` | The raw `*.en.json` this came from. |
+| `source_file` / `source_path` | Original video, if recorded. |
+| `transcription_model` | Model that produced the raw transcript. |
+| `language` | Language requested/reported. |
+| `processed_duration_seconds` | Length of the transcribed interval. |
+| `cleaning` | What the deterministic stage changed, and proof it changed nothing else. |
+| `verification` | Whether and how the transcript was cross-checked. |
+| `qa_summary` | Findings counted by severity and type. |
+| `terminology_summary` | Detected domain terms. |
+| `cleaned_transcript` | Full cleaned text. |
+| `raw_transcript` | The API's text, unmodified. |
+| `segments[]` | One entry per prepared segment (below). |
+
+Each `segments[]` entry:
+
+| Field | Description |
+|---|---|
+| `segment_id` | Stable id, e.g. `0` or `0-1` after a verified merge. |
+| `source_segment_ids` | The raw segment(s) it was built from. |
+| `start_seconds` / `end_seconds` | Audio timing, or `null` when unknown. |
+| `duration_seconds` | End minus start, or `null`. |
+| `raw_text` | Original text, unmodified. |
+| `cleaned_text` | Formatting-cleaned English. |
+| `quality_flags` | Finding types attached to this segment. |
+| `correction_status` | `unchanged`, `uncertain_review_required`, `verified_by_retranscription`. |
+| `timestamp_confidence` | `reliable`, `suspect` or `missing`. |
+| `terminology` | Terms detected in this segment. |
+
+Unreliable boundaries are represented explicitly through
+`timestamp_confidence: "missing" | "suspect"` rather than by inventing times.
+No word-level timestamps are fabricated.
+
+### Performance
+
+The QA stage is designed for full-length material. A synthetic 221,000-word
+transcript (a whole 2 h 49 m lecture) analyses in about **3 seconds**. Repeated
+phrases are found with a seed-and-extend index rather than an exhaustive n-gram
+sweep, and long-text similarity is bounded.
 
 ---
 
@@ -258,12 +440,22 @@ Stage 7/7  Writing output artifacts
 
 For an input named `lecture.mp4`, `output/` receives:
 
+**Phase 1 (raw, authoritative, never modified)**
+
 | File | Contents |
 |---|---|
 | `lecture_test_30s.mp4` | The extracted video segment. |
-| `lecture_test_30s.en.txt` | Plain UTF-8 transcript, ready for translation. |
+| `lecture_test_30s.en.txt` | Plain UTF-8 transcript, exactly as returned. |
 | `lecture_test_30s.en.json` | Structured transcript + processing metadata. |
 | `lecture_test_30s.metadata.json` | Media inspection and extraction details. |
+
+**Phase 2 (derived, regenerate freely)**
+
+| File | Contents |
+|---|---|
+| `lecture_test_30s.en.clean.txt` | Cleaned, translation-ready English text. |
+| `lecture_test_30s.en.clean.json` | Prepared segments, schema version 2. |
+| `lecture_test_30s.qa.json` | Structured quality findings. |
 
 Existing files are **never** silently overwritten - the run stops and asks for
 `--overwrite`.
@@ -364,6 +556,22 @@ The interval probably contains no speech (silence, music). Try a different
 `--duration` or a later part of the video. This is reported as a clear error,
 not silently accepted.
 
+**Phase 2 reports `STATUS: NEEDS_REVIEW`**
+This is information, not a failure: the run succeeded and the files are valid.
+The console review notes tell you which segments and time ranges to listen to.
+
+**Phase 2 says the audio needed for `--verify-transcript` is missing**
+Provide it with `--audio <file>`, or place an export next to the transcript
+with the same name (`.flac`/`.wav`/`.mp3`/`.m4a`/`.ogg`), or keep the source
+video recorded in the artifact so the interval can be re-extracted with FFmpeg.
+
+**Phase 2 shows a duplicated segment**
+Expected on speech-to-text output. Read
+[How to review an uncertain transcript](#how-to-review-an-uncertain-transcript)
+before changing anything. If `--verify-transcript` reports
+`duplicate_confirmed`, two independent transcriptions agree and the repetition
+is real.
+
 **`The prepared audio ... exceeds the upload limit`**
 Shorten the interval: `--duration 30`. Audio is never truncated automatically.
 
@@ -386,10 +594,19 @@ al-brooks-dubbed/
 │   ├── discovery.py          # input video discovery and validation
 │   ├── media.py              # FFmpeg / FFprobe service
 │   ├── transcription.py      # Groq client, retries, proxy handling
-│   ├── outputs.py            # artifact paths, writing, validation
-│   ├── pipeline.py           # stage orchestration
+│   ├── outputs.py            # artifact paths, atomic writes, validation
+│   ├── pipeline.py           # Phase 1 stage orchestration
+│   ├── text_cleaning.py      # Phase 2 deterministic formatting cleanup
+│   ├── qa.py                 # Phase 2 quality detection and reporting
+│   ├── transcript.py         # Phase 2 domain model and schemas
+│   ├── terminology.py        # Al Brooks vocabulary annotations
+│   ├── verification.py       # Phase 2 optional re-transcription check
+│   ├── preparation.py        # Phase 2 stage orchestration
+│   ├── enums.py              # Python 3.10-compatible string enums
 │   ├── logging_utils.py      # logging + secret redaction
-│   └── errors.py             # exception hierarchy
+│   ├── errors.py             # exception hierarchy
+│   └── resources/
+│       └── terminology.json   # editable Al Brooks glossary
 └── tests/                    # pytest suite (no API calls, no media fixtures)
 ```
 

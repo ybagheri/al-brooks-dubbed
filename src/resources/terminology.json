@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "language": "en",
+  "description": "Al Brooks price-action terminology used to ANNOTATE and PREPARE English transcripts for later translation. Phase 2 never rewrites source text based on these entries: a term match is an annotation, not a correction. 'persian' fields are intentionally null and are filled in during the translation phase.",
+  "matching": {
+    "case_sensitive": false,
+    "require_word_boundaries": true,
+    "prefer_longest_match": true
+  },
+  "terms": [
+    {
+      "id": "wedge_bull_flag",
+      "canonical": "wedge bull flag",
+      "aliases": ["wedge flag"],
+      "category": "pattern",
+      "notes": "Bull flag with a rising wedge structure; one of Al Brooks' core continuation patterns.",
+      "persian": null
+    },
+    {
+      "id": "bull_flag",
+      "canonical": "bull flag",
+      "aliases": ["bull flags"],
+      "category": "pattern",
+      "notes": "Strong bullish continuation flag after a spike.",
+      "persian": null
+    },
+    {
+      "id": "bear_flag",
+      "canonical": "bear flag",
+      "aliases": ["bear flags"],
+      "category": "pattern",
+      "notes": "Bearish mirror of a bull flag.",
+      "persian": null
+    },
+    {
+      "id": "flag",
+      "canonical": "flag",
+      "aliases": ["flags"],
+      "category": "pattern",
+      "notes": "Short trading-range pause in the direction of the trend.",
+      "persian": null
+    },
+    {
+      "id": "trading_range",
+      "canonical": "trading range",
+      "aliases": ["trading ranges"],
+      "category": "structure",
+      "notes": "A sideways price area; often rendered as 'range' in speech.",
+      "persian": null
+    },
+    {
+      "id": "measured_move",
+      "canonical": "measured move",
+      "aliases": ["measured moves"],
+      "category": "projection",
+      "notes": "Projected target derived from the height of a prior move.",
+      "persian": null
+    },
+    {
+      "id": "price_action",
+      "canonical": "price action",
+      "aliases": ["price actions"],
+      "category": "core",
+      "notes": "Central concept of the whole course.",
+      "persian": null
+    },
+    {
+      "id": "gap",
+      "canonical": "gap",
+      "aliases": ["gaps"],
+      "category": "structure",
+      "notes": "Price area with no trading between two sessions. Also an ordinary English word, so matches are low confidence.",
+      "persian": null
+    },
+    {
+      "id": "breakout",
+      "canonical": "breakout",
+      "aliases": ["breakouts"],
+      "category": "structure",
+      "notes": "Move out of a trading range or flag.",
+      "persian": null
+    },
+    {
+      "id": "pullback",
+      "canonical": "pullback",
+      "aliases": ["pullbacks", "pull back"],
+      "category": "structure",
+      "notes": "Retrace against the direction of the trend.",
+      "persian": null
+    },
+    {
+      "id": "reversal",
+      "canonical": "reversal",
+      "aliases": ["reversals"],
+      "category": "structure",
+      "notes": "Change in the prevailing trend direction.",
+      "persian": null
+    },
+    {
+      "id": "wedge",
+      "canonical": "wedge",
+      "aliases": ["wedges"],
+      "category": "pattern",
+      "notes": "Trendline-bounded retracement.",
+      "persian": null
+    },
+    {
+      "id": "channel",
+      "canonical": "channel",
+      "aliases": ["channels"],
+      "category": "structure",
+      "notes": "Parallel trendlines bounding a trend.",
+      "persian": null
+    },
+    {
+      "id": "trendline",
+      "canonical": "trend line",
+      "aliases": ["trendlines", "trend lines"],
+      "category": "structure",
+      "notes": "Line drawn along highs or lows.",
+      "persian": null
+    },
+    {
+      "id": "trend",
+      "canonical": "trend",
+      "aliases": ["trends"],
+      "category": "core",
+      "notes": "Directional sequence of higher highs and higher lows, or the inverse.",
+      "persian": null
+    },
+    {
+      "id": "spike",
+      "canonical": "spike",
+      "aliases": ["spikes"],
+      "category": "structure",
+      "notes": "Strong, usually two-legged directional move.",
+      "persian": null
+    },
+    {
+      "id": "double_top",
+      "canonical": "double top",
+      "aliases": ["double tops"],
+      "category": "pattern",
+      "notes": "Two failed attempts to exceed the same high.",
+      "persian": null
+    },
+    {
+      "id": "double_bottom",
+      "canonical": "double bottom",
+      "aliases": ["double bottoms"],
+      "category": "pattern",
+      "notes": "Two failed attempts to break the same low.",
+      "persian": null
+    },
+    {
+      "id": "head_and_shoulders",
+      "canonical": "head and shoulders",
+      "aliases": ["head-and-shoulders"],
+      "category": "pattern",
+      "notes": "Classic reversal pattern.",
+      "persian": null
+    },
+    {
+      "id": "triangle",
+      "canonical": "triangle",
+      "aliases": ["triangles"],
+      "category": "pattern",
+      "notes": "Converging trendlines.",
+      "persian": null
+    },
+    {
+      "id": "resistance",
+      "canonical": "resistance",
+      "aliases": [],
+      "category": "structure",
+      "notes": "Price level where selling tends to appear.",
+      "persian": null
+    },
+    {
+      "id": "support",
+      "canonical": "support",
+      "aliases": [],
+      "category": "structure",
+      "notes": "Price level where buying tends to appear.",
+      "persian": null
+    },
+    {
+      "id": "retest",
+      "canonical": "retest",
+      "aliases": ["retests", "retest"],
+      "category": "structure",
+      "notes": "Second touch of a breakout level.",
+      "persian": null
+    },
+    {
+      "id": "signal_bar",
+      "canonical": "signal bar",
+      "aliases": ["signal bars"],
+      "category": "core",
+      "notes": "Bar that identifies a potential entry.",
+      "persian": null
+    },
+    {
+      "id": "always_in",
+      "canonical": "always in",
+      "aliases": ["always-in"],
+      "category": "core",
+      "notes": "Al Brooks' term for the dominant market direction.",
+      "persian": null
+    },
+    {
+      "id": "second_entry",
+      "canonical": "second entry",
+      "aliases": ["second entries"],
+      "category": "core",
+      "notes": "Entry on the second attempt after a first-entry reversal.",
+      "persian": null
+    },
+    {
+      "id": "scalping",
+      "canonical": "scalping",
+      "aliases": ["scalp", "scalps"],
+      "category": "strategy",
+      "notes": "Very short-duration trading.",
+      "persian": null
+    },
+    {
+      "id": "opening_range",
+      "canonical": "opening range",
+      "aliases": ["opening ranges"],
+      "category": "structure",
+      "notes": "Price range of the first minutes of a session.",
+      "persian": null
+    },
+    {
+      "id": "bar",
+      "canonical": "bar",
+      "aliases": ["bars"],
+      "category": "core",
+      "notes": "One OHLC period.",
+      "persian": null
+    },
+    {
+      "id": "candlestick",
+      "canonical": "candlestick",
+      "aliases": ["candlesticks", "candle"],
+      "category": "core",
+      "notes": "Open-high-low-close chart.",
+      "persian": null
+    },
+    {
+      "id": "limit_up",
+      "canonical": "limit up",
+      "aliases": ["limit-up"],
+      "category": "market",
+      "notes": "Session closes at the upper price limit.",
+      "persian": null
+    },
+    {
+      "id": "limit_down",
+      "canonical": "limit down",
+      "aliases": ["limit-down"],
+      "category": "market",
+      "notes": "Session closes at the lower price limit.",
+      "persian": null
+    },
+    {
+      "id": "bear",
+      "canonical": "bear",
+      "aliases": ["bears", "bearish"],
+      "category": "market",
+      "notes": "Down-trending market participant or direction.",
+      "persian": null
+    },
+    {
+      "id": "bull",
+      "canonical": "bull",
+      "aliases": ["bulls", "bullish"],
+      "category": "market",
+      "notes": "Up-trending market participant or direction.",
+      "persian": null
+    },
+    {
+      "id": "spike_and_channel",
+      "canonical": "spike and channel",
+      "aliases": [],
+      "category": "pattern",
+      "notes": "Al Brooks' description of a normal trend.",
+      "persian": null
+    }
+  ]
+}

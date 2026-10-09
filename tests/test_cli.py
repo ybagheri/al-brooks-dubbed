@@ -22,10 +22,14 @@ def test_help_exits_cleanly(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    from src import __version__
+
     with pytest.raises(SystemExit) as excinfo:
         main(["--version"])
     assert excinfo.value.code == 0
-    assert "0.1.0" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert __version__ in out
+    assert __version__ == "0.2.0"
 
 
 def test_default_duration_is_documented() -> None:

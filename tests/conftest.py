@@ -6,11 +6,12 @@ user's environment: every test runs against ``tmp_path`` and mocked clients.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,77 @@ requires_ffmpeg = pytest.mark.skipif(
     FFMPEG is None or FFPROBE is None,
     reason="ffmpeg/ffprobe are not available on PATH",
 )
+
+#: The real Phase 1 output for the 30 second sample, reproduced verbatim so the
+#: tests do not depend on a particular user's video being present.
+KNOWN_DUPLICATE_TRANSCRIPT = (
+    "Sorry about being a couple of minutes late. The bulls see the 60 minute chart "
+    "as forming Sorry about being a couple of minutes late. The bulls see the 60 "
+    "minute chart as forming a wedge bull flag respecting the gap back here in August."
+)
+
+KNOWN_DUPLICATE_SEGMENTS: list[dict[str, Any]] = [
+    {
+        "id": 0,
+        "start": 0.0,
+        "end": 7.0,
+        "text": (
+            "Sorry about being a couple of minutes late. The bulls see the 60 minute "
+            "chart as forming"
+        ),
+    },
+    {
+        "id": 1,
+        "start": 7.0,
+        "end": 23.0,
+        "text": (
+            "Sorry about being a couple of minutes late. The bulls see the 60 minute "
+            "chart as forming"
+        ),
+    },
+    {
+        "id": 2,
+        "start": 23.0,
+        "end": 30.0,
+        "text": "a wedge bull flag respecting the gap back here in August.",
+    },
+]
+
+
+def known_duplicate_payload(**overrides: Any) -> dict[str, Any]:
+    """Build a Phase 1 style transcript payload reproducing the known example."""
+
+    payload: dict[str, Any] = {
+        "schema_version": 1,
+        "source_file": "BTR20140930-9439edit.mp4",
+        "source_path": str(PROJECT_ROOT / "data" / "BTR20140930-9439edit.mp4"),
+        "source_duration_seconds": 10170.067,
+        "requested_duration_seconds": 30.0,
+        "processed_duration_seconds": 30.0,
+        "processing_timestamp": "2026-10-09T04:03:06Z",
+        "processing_status": "success",
+        "api_reported_audio_duration_seconds": 29.998,
+        "transcription_model": "whisper-large-v3-turbo",
+        "requested_language": "English",
+        "transcript": KNOWN_DUPLICATE_TRANSCRIPT,
+        "api_reported_duration_seconds": 29.998,
+        "segments": [dict(segment) for segment in KNOWN_DUPLICATE_SEGMENTS],
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.fixture
+def write_raw_transcript(tmp_path: Path) -> Callable[..., Path]:
+    """Write a raw ``*.en.json`` transcript artifact and return its path."""
+
+    def _write(payload: dict[str, Any], name: str = "lecture_test_30s.en.json") -> Path:
+        target = tmp_path / "output" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return target
+
+    return _write
 
 
 # ----------------------------------------------------------------------

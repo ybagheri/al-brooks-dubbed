@@ -1,4 +1,4 @@
-"""Command line interface for Phase 1.
+"""Command line interface for Phase 1 and Phase 2.
 
 Usage examples::
 
@@ -7,6 +7,8 @@ Usage examples::
     python -m src.main --input lecture.mp4 --duration 30
     python -m src.main --help
     python -m src.main --check-env
+    python -m src.main --prepare-transcript output/lecture_test_30s.en.json
+    python -m src.main --prepare-transcript output/lecture_test_30s.en.json --verify-transcript
 """
 
 from __future__ import annotations
@@ -15,8 +17,9 @@ import argparse
 import logging
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from . import __version__
 from .config import (
@@ -27,6 +30,7 @@ from .config import (
     KNOWN_TRANSCRIPTION_MODELS,
     MODEL_ENV_VAR,
     PROJECT_ROOT,
+    AppConfig,
     build_config,
     read_environment,
     resolve_tool_paths,
@@ -36,6 +40,7 @@ from .errors import AlBrooksError, ConfigurationError
 from .logging_utils import register_secret, setup_logging
 from .media import verify_executables
 from .pipeline import Phase1Pipeline, render_final_report
+from .preparation import TranscriptPreparer, render_preparation_report
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +48,27 @@ PROGRAM_NAME: Final[str] = "python -m src.main"
 
 _DESCRIPTION: Final[str] = (
     "Phase 1: extract the first N seconds of a video and transcribe the English "
-    "speech with the Groq speech-to-text API."
+    "speech with the Groq speech-to-text API.\n"
+    "Phase 2: quality-assure and prepare an existing transcript for translation."
 )
 
 _EPILOG: Final[str] = f"""
-examples:
+phase 1 - extract and transcribe:
   {PROGRAM_NAME}                              process the only video in .\\data
   {PROGRAM_NAME} --input lecture.mp4           process a specific file
   {PROGRAM_NAME} --input lecture.mp4 --duration 30
   {PROGRAM_NAME} --overwrite                   replace existing artifacts
+
+phase 2 - quality assurance and preparation (no API calls unless asked):
+  {PROGRAM_NAME} --prepare-transcript output\\lecture_test_30s.en.json
+  {PROGRAM_NAME} --prepare-transcript output\\lecture_test_30s.en.json --verify-transcript
+  {PROGRAM_NAME} --prepare-transcript output\\lecture_test_30s.en.json --verify-transcript \\
+      --audio output\\lecture_test_30s.flac --verify-attempts 2
+
+informational:
   {PROGRAM_NAME} --check-env                   verify ffmpeg, ffprobe and {API_KEY_ENV_VAR}
   {PROGRAM_NAME} --list-inputs                 list candidate videos in .\\data
+  {PROGRAM_NAME} --help                        full reference
 
 environment variables:
   {API_KEY_ENV_VAR}              (required) Groq API key
@@ -61,7 +76,8 @@ environment variables:
   FFMPEG_PATH / FFPROBE_PATH      (optional) explicit executable paths
 
 outputs are written next to this package in .\\output\\ as
-  <name>_test_<duration>s.mp4 / .en.txt / .en.json / .metadata.json
+  phase 1: <name>_test_<duration>s.mp4 / .en.txt / .en.json / .metadata.json
+  phase 2: <name>_test_<duration>s.en.clean.txt / .en.clean.json / .qa.json
 """
 
 
@@ -144,6 +160,40 @@ def build_parser() -> argparse.ArgumentParser:
         help="List the candidate videos in the data directory and exit.",
     )
     parser.add_argument(
+        "--prepare-transcript",
+        metavar="PATH",
+        help=(
+            "Phase 2: quality-assure and prepare an existing Phase 1 transcript "
+            "JSON (for example output/lecture_test_30s.en.json). Writes "
+            ".en.clean.txt, .en.clean.json and .qa.json. Makes no API call."
+        ),
+    )
+    parser.add_argument(
+        "--verify-transcript",
+        action="store_true",
+        help=(
+            "With --prepare-transcript: re-transcribe the same audio to check "
+            "suspected duplicated segments. Off by default because it spends API "
+            "usage."
+        ),
+    )
+    parser.add_argument(
+        "--audio",
+        metavar="PATH",
+        help=(
+            "With --verify-transcript: audio file for the transcribed interval. "
+            "If omitted, an audio export next to the transcript is used, "
+            "otherwise the interval is re-extracted from the source video."
+        ),
+    )
+    parser.add_argument(
+        "--verify-attempts",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Maximum verification transcription attempts (default: 1).",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -152,7 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"al-brooks-dubbed {__version__} (Phase 1)",
+        version=f"al-brooks-dubbed {__version__} (Phase 1 + Phase 2)",
     )
     return parser
 
@@ -188,6 +238,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.check_env:
             return _run_check_env()
 
+        if args.prepare_transcript:
+            return _run_prepare_transcript(args, env)
+
+        if args.verify_transcript and not args.prepare_transcript:
+            logger.error(
+                "--verify-transcript only applies to an existing transcript; "
+                "combine it with --prepare-transcript PATH."
+            )
+            return 2
+
         config = build_config(env)
         pipeline = Phase1Pipeline(config)
         result = pipeline.run(input_name=args.input)
@@ -208,6 +268,54 @@ def main(argv: Sequence[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001 - last-resort safety net
         logger.exception("Unexpected error: %s", exc)
         return 1
+
+
+def _run_prepare_transcript(args: argparse.Namespace, env: Any) -> int:
+    """Implementation of ``--prepare-transcript`` (Phase 2).
+
+    Preparation itself never needs an API key: it reads the raw artifact and
+    writes cleaned outputs. A key is only required when ``--verify-transcript``
+    explicitly asks for a re-transcription.
+    """
+
+    raw_path = Path(args.prepare_transcript)
+    verify = bool(args.verify_transcript)
+
+    if verify and args.verify_attempts < 1:
+        logger.error("--verify-attempts must be at least 1.")
+        return 2
+
+    # A configuration without the API key is enough for plain preparation.
+    preparer_config = _preparation_config(env, require_api_key=verify)
+    media_service = None
+    if verify:
+        from .media import MediaService
+
+        assert preparer_config.ffmpeg_path is not None
+        assert preparer_config.ffprobe_path is not None
+        media_service = MediaService(preparer_config.ffmpeg_path, preparer_config.ffprobe_path)
+
+    preparer = TranscriptPreparer(preparer_config, media_service=media_service)
+    result = preparer.prepare(
+        raw_json_path=raw_path,
+        verify=verify,
+        audio_path=Path(args.audio) if args.audio else None,
+        verify_attempts=max(1, args.verify_attempts),
+    )
+
+    print(render_preparation_report(result))
+    return 0
+
+
+def _preparation_config(env: Any, *, require_api_key: bool) -> AppConfig:
+    """Build a config for Phase 2, tolerating a missing key when not verifying."""
+
+    if require_api_key:
+        return build_config(env)
+
+    placeholder = "__not_required_for_preparation__"
+    patched = replace(env, api_key=env.api_key or placeholder)
+    return build_config(patched)
 
 
 def _run_list_inputs(data_dir: Path, parser: argparse.ArgumentParser) -> int:

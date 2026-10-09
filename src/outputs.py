@@ -65,6 +65,57 @@ class OutputPaths:
         }
 
 
+@dataclass(frozen=True)
+class PreparedPaths:
+    """The three artifacts produced by the Phase 2 preparation stage."""
+
+    cleaned_text: Path
+    cleaned_json: Path
+    qa_json: Path
+
+    @classmethod
+    def from_raw(cls, raw_json: Path) -> PreparedPaths:
+        """Derive prepared-output names from a Phase 1 ``*.en.json`` path.
+
+        ``lecture_test_30s.en.json`` ->
+        ``lecture_test_30s.en.clean.txt`` / ``.en.clean.json`` /
+        ``lecture_test_30s.qa.json``
+        """
+
+        raw_json = Path(raw_json)
+        name = raw_json.name
+        stem = name[: -len(".json")] if name.endswith(".json") else name
+        output_dir = raw_json.parent
+        # The QA report describes the raw transcript, so it drops the language
+        # tag: "lecture_test_30s.en" -> "lecture_test_30s".
+        base = stem[: -len(".en")] if stem.endswith(".en") else stem
+        return cls(
+            cleaned_text=output_dir / f"{stem}.clean.txt",
+            cleaned_json=output_dir / f"{stem}.clean.json",
+            qa_json=output_dir / f"{base}.qa.json",
+        )
+
+    @property
+    def all(self) -> tuple[Path, ...]:
+        return (self.cleaned_text, self.cleaned_json, self.qa_json)
+
+    def existing(self) -> list[Path]:
+        return [path for path in self.all if path.exists()]
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "cleaned_transcript": str(self.cleaned_text),
+            "prepared_transcript": str(self.cleaned_json),
+            "qa_report": str(self.qa_json),
+        }
+
+
+def atomic_write_text(path: Path, text: str) -> Path:
+    """Public wrapper around the atomic UTF-8 writer used by all artifacts."""
+
+    return _atomic_write_text(Path(path), text)
+
+
 class OutputWriter:
     """Writes the Phase 1 artifacts and validates them afterwards."""
 

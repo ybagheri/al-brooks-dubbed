@@ -5,6 +5,136 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-09
+
+Phase 2: transcript quality assurance and preparation for translation.
+Phase 1 behaviour and artifacts are unchanged.
+
+### Added
+
+**Quality assurance (`src/qa.py`)**
+
+- 18 structured checks, each reported with severity, affected segment ids, time
+  range, an explanation and a suggested action:
+  - `exact_duplicate_segment`, `near_duplicate_segment`,
+    `duplicate_segment_duration_mismatch`
+  - `repeated_phrase` (conservative, never auto-removed)
+  - `empty_segment`, `no_segments`
+  - `invalid_timestamp`, `segment_end_before_start`, `segment_out_of_order`,
+    `segment_timestamp_out_of_bounds`
+  - `segment_gap`, `segment_overlap`
+  - `transcript_segment_mismatch`
+  - `segment_suspiciously_short`, `segment_suspiciously_long`
+  - `incomplete_speech_at_start`, `incomplete_speech_at_end`
+  - `terminology_detected` (annotation only)
+- Five-level severity scale; any `critical`/`high`/`medium` finding sets the run
+  status to `NEEDS_REVIEW`.
+- Configurable `QaThresholds` so limits can be tuned without code changes.
+
+**Deterministic cleaning (`src/text_cleaning.py`)**
+
+- Formatting-only cleanup: Unicode NFKC, whitespace collapse, spacing before
+  punctuation, bracket binding, space after clause punctuation, ellipsis
+  normalisation.
+- Never rewrites words, fixes grammar, translates or removes content. A test
+  asserts the cleaned text introduces no new word tokens.
+- A separate punctuation-free comparison key used only for equality and
+  similarity checks, never written to an output file.
+
+**Prepared transcript schema (`src/transcript.py`)**
+
+- Versioned `schema_version: 2` in `*.en.clean.json`, documented field by field
+  in the README.
+- Each segment carries `segment_id`, `source_segment_ids`, audio time range,
+  `raw_text`, `cleaned_text`, `quality_flags`, `correction_status`,
+  `timestamp_confidence` and detected `terminology`.
+- Unreliable boundaries are represented explicitly via
+  `timestamp_confidence` (`reliable` / `suspect` / `missing`) rather than
+  invented. No word-level timestamps or confidence scores are fabricated.
+- Tolerates malformed input: non-object segments, missing/NaN/negative/string
+  timestamps, out-of-order segments, transcripts without segments.
+
+**Cautious recovery strategy (`src/verification.py`)**
+
+- Optional, explicitly requested, bounded re-transcription of the *same audio*
+  (`--verify-transcript`, `--verify-attempts`).
+- Verdicts: `duplicate_contradicted` (the only case that may merge segments),
+  `duplicate_confirmed`, `inconclusive`, `failed`, `not_performed`.
+- Never claims a transcript was verified unless a real request completed.
+- Permanent errors (invalid key, forbidden, oversized) are **not** retried,
+  even at the verification level.
+- Audio is located from `--audio`, an export beside the artifact, or
+  re-extracted from the source video with FFmpeg; when none is possible the
+  command lists exactly what is missing.
+
+**Al Brooks terminology (`src/terminology.py`, `src/resources/terminology.json`)**
+
+- 35 domain terms with categories, aliases, notes and empty `persian` fields
+  ready for the translation phase.
+- Case-insensitive, whole-word matching that prefers the longest match
+  (`wedge bull flag` wins over `wedge` and `bull flag`).
+- Terms that are also ordinary English words are marked `ambiguous`.
+- Used for annotation only; a test asserts it never changes source text.
+
+**CLI (`--prepare-transcript`)**
+
+- `python -m src.main --prepare-transcript output/lecture_test_30s.en.json`
+  — QA and cleaning only; makes **no** API call and needs no API key.
+- `--verify-transcript`, `--audio`, `--verify-attempts` for optional
+  cross-checking. Off by default so routine preparation costs nothing.
+- All Phase 1 flags and commands are unchanged and still covered by tests.
+- New exit code `7` for transcript problems.
+
+**Output protection**
+
+- New artifacts `<name>.en.clean.txt`, `<name>.en.clean.json`, `<name>.qa.json`
+  are protected from accidental overwrite; `--overwrite` is required.
+- Raw `*.en.json` and `*.en.txt` are opened read-only and are never rewritten.
+
+### Changed
+
+- `src/outputs.py` gained `PreparedPaths` and a public atomic-write helper.
+- `src/transcription.py` gained `is_retryable_error()` so higher-level loops can
+  avoid retrying permanent failures.
+- `src/errors.py` gained the Phase 2 exception hierarchy.
+- `src/enums.py` added for a Python 3.10-compatible string enum (the project
+  targets 3.10, where `enum.StrEnum` does not exist).
+
+### Fixed
+
+- `text_cleaning._open_brackets` dropped the opening bracket instead of the
+  space after it, so `( spaced )` became `spaced)`.
+- `OutputPaths` is unaffected; the QA coverage early-return no longer skips
+  bounds and completeness checks for single-segment transcripts.
+- Out-of-order segments are now detected (`segment_out_of_order`), which was
+  specified but previously missing.
+
+### Performance
+
+- Repeated-phrase detection rewritten from an n-gram sweep to a seed-and-extend
+  index; terminology matching replaced an O(n²) overlap check with a sorted
+  watermark; similarity on very long text is bounded. A full 221,000-word
+  transcript (a whole 2 h 49 m lecture) now analyses in about **3.4 s** instead
+  of 148 s. A performance regression test guards this.
+
+### Tests — 363 total, all passing
+
+201 new Phase 2 cases covering exact and near duplicates, legitimate repeated
+terminology, duplicate transcript vs segment text, invalid/negative/NaN/
+out-of-order/overlapping timestamps, gaps and overlaps, empty segments,
+transcript/segment inconsistency, conservative cleaning and the guarantee that
+raw files are untouched, overwrite protection, uncertain corrections, missing
+audio during verification, API failures and auth failures during verification,
+bounded retries, schema serialisation and validity, terminology detection
+rules, and long-transcript performance. All API access is mocked; no test needs
+a real key or spends credits, and none performs a network request.
+
+### Known issues
+
+- Unchanged from 0.1.0: pytest's default temporary directory is not writable on
+  this machine, so `PYTEST_DEBUG_TEMPROOT` must point at a project-local folder
+  (documented in the README).
+
 ## [0.1.0] - 2026-10-09
 
 Phase 1: video extraction and English transcription. First working release,
@@ -134,4 +264,5 @@ verified end to end against a real lecture video.
 - The Groq free tier limits audio minutes per day, which matters for later
   full-length phases but not for a 30-second test.
 
+[0.2.0]: https://example.invalid/al-brooks-dubbed/releases/0.2.0
 [0.1.0]: https://example.invalid/al-brooks-dubbed/releases/0.1.0

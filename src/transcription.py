@@ -257,8 +257,27 @@ class _PermanentTranscriptionError(TranscriptionError):
     """Internal marker: repeating the request cannot help."""
 
 
+def is_retryable_error(exc: BaseException) -> bool:
+    """True when repeating the request could plausibly succeed.
+
+    Used by higher-level loops (such as Phase 2 verification) so that they do
+    not retry an invalid key, a forbidden model or an oversized upload.
+    """
+
+    if not isinstance(exc, Exception):  # pragma: no cover - defensive
+        return False
+    if isinstance(exc, (TranscriptionAuthError, TranscriptionSizeError, EmptyTranscriptError)):
+        return False
+    return isinstance(_classify(exc), _RetryableTranscriptionError)
+
+
 def _classify(exc: Exception) -> TranscriptionError:
     """Map an SDK exception onto a retryable / permanent project error."""
+
+    # Already-classified project errors pass through unchanged so that a
+    # permanent failure is never re-classified as retryable further up.
+    if isinstance(exc, (TranscriptionAuthError, TranscriptionSizeError)):
+        return exc
 
     status_code = getattr(exc, "status_code", None)
     if status_code is None:

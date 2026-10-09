@@ -1,323 +1,327 @@
 # Handoff
 
-**Phase:** 1 - video extraction and English transcription
-**Status:** ✅ Complete and verified against a real video with a real Groq API call
+**Phase:** 2 — transcript quality assurance and preparation
+**Status:** ✅ Complete and verified against the real 30-second sample, including one real Groq verification call
 **Date:** 2026-10-09
-**Repository:** local directory only - **not** a Git repository, no remote configured
+**Version:** 0.2.0
+**Repository:** local Git repo on `main`. A GitHub remote (`origin`) already existed and was **not** modified or pushed to.
 
 ---
 
 ## 1. What was built
 
-A modular Python application that finds a video in `data/`, extracts the first
-N seconds with FFmpeg, transcribes that exact interval with the Groq
-speech-to-text API, and writes four validated artifacts.
+Phase 1 is untouched. Phase 2 adds a QA and preparation stage that runs on an
+existing Phase 1 transcript, makes **no API call by default**, and never alters
+the raw artifacts.
 
 | Module | Responsibility |
 |---|---|
-| `src/config.py` | Configuration, environment validation, model defaults |
-| `src/discovery.py` | Input video discovery and validation |
-| `src/media.py` | FFprobe inspection + FFmpeg extraction service |
-| `src/transcription.py` | Groq client, error classification, retries, proxy handling |
-| `src/outputs.py` | Artifact paths, atomic writes, validation |
-| `src/pipeline.py` | Seven-stage orchestration |
-| `src/cli.py` | Argument parsing and exit codes |
-| `src/main.py` | `python -m src.main` entry point |
-| `src/logging_utils.py` | Logging with mandatory secret redaction |
-| `src/errors.py` | Exception hierarchy with per-class exit codes |
+| `src/text_cleaning.py` | Deterministic, formatting-only cleanup + similarity helpers |
+| `src/qa.py` | 18 quality checks, severities, findings, duplicate groups |
+| `src/transcript.py` | Domain model: raw transcript in, prepared transcript out (schema v2) |
+| `src/terminology.py` | Al Brooks glossary loading and annotation |
+| `src/resources/terminology.json` | 35 editable domain terms with empty `persian` fields |
+| `src/verification.py` | Optional bounded re-transcription and verdict logic |
+| `src/preparation.py` | Three-stage orchestration and artifact writing |
+| `src/enums.py` | Python 3.10-compatible string enum |
+| `src/outputs.py` | **extended** with `PreparedPaths` and a public atomic writer |
+| `src/transcription.py` | **extended** with `is_retryable_error()` |
+| `src/errors.py` | **extended** with the Phase 2 exception hierarchy (exit code 7) |
+| `src/cli.py` | **extended** with `--prepare-transcript` and friends |
 
-Files created:
+### Files created
 
 ```
-pyproject.toml  .gitignore  .env.example
-README.md  README.fa.md  ROADMAP.md  CHANGELOG.md  HANDOFF.md
-src/__init__.py  src/main.py  src/cli.py  src/config.py  src/discovery.py
-src/media.py  src/transcription.py  src/outputs.py  src/pipeline.py
-src/logging_utils.py  src/errors.py
-tests/__init__.py  tests/conftest.py  tests/test_config.py
-tests/test_discovery.py  tests/test_media.py  tests/test_transcription.py
-tests/test_outputs.py  tests/test_pipeline.py  tests/test_cli.py  tests/test_proxy.py
+src/qa.py
+src/text_cleaning.py
+src/transcript.py
+src/terminology.py
+src/verification.py
+src/preparation.py
+src/enums.py
+src/resources/terminology.json
+tests/test_qa.py
+tests/test_text_cleaning.py
+tests/test_terminology.py
+tests/test_verification.py
+tests/test_preparation.py
+tests/test_prepare_cli.py
 ```
 
-Generated during setup (all git-ignored): `.venv/`, `output/`, `logs/`,
-`.pytest_tmp/`.
+### Files modified
+
+```
+src/cli.py            src/outputs.py         src/transcription.py
+src/errors.py         tests/conftest.py
+README.md             README.fa.md           ROADMAP.md
+CHANGELOG.md          HANDOFF.md
+```
+
+No Phase 1 behaviour, flag, output name or exit code was changed.
 
 ---
 
-## 2. Environment
+## 2. The central design rule
 
-| Item | Value |
-|---|---|
-| OS | Windows 11, x86-64 |
-| Python | 3.12.9 (venv at `D:\Projects\al-brooks-dubbed\.venv`) |
-| FFmpeg / FFprobe | 9.0.2-essentials, `C:\ffmpeg\bin\` |
-| Groq SDK | 1.7.0 |
-| pytest / ruff / mypy | 9.1.1 / 0.16.10 / 2.4.0 |
-| `GROQ_API_KEY` | present (value never logged or printed) |
-| System proxy | `http://127.0.0.1:1080` |
+**A suspect transcript is never silently changed.**
 
-### Source media
-
-```
-D:\Projects\al-brooks-dubbed\data\BTR20140930-9439edit.mp4
-  size      : 526,839,074 bytes (~527 MB)
-  duration  : 10170.07 s (2 h 49 m 30 s)
-  video     : h264 High, 1368x736, 15 fps, yuv420p
-  audio     : aac LC, 2 ch, 44.1 kHz, 129 kbps
-```
+The raw `*.en.json` and `*.en.txt` are opened read-only. Cleaning writes
+`*.en.clean.*`. A duplicated segment is merged **only** when a fresh
+transcription of the *same audio* positively contradicts the duplication.
+Otherwise the wording is preserved verbatim and the segments are marked
+`uncertain_review_required`.
 
 ---
 
 ## 3. Commands run and actual results
 
-### 3.1 Environment check
-
-```
-> .\.venv\Scripts\python.exe -m src.main --check-env
-ffmpeg   ffmpeg version 9.0.2-essentials_build-www.gyan.dev ...
-ffprobe  ffprobe version 9.0.2-essentials_build-www.gyan.dev ...
-GROQ_API_KEY is set (value hidden, 56 characters).
-Environment check PASSED - ready to run python -m src.main
-```
-
-**Result:** exit code `0`.
-
-### 3.2 Automated tests
+### 3.1 Automated tests
 
 ```
 > $env:PYTEST_DEBUG_TEMPROOT = "D:\Projects\al-brooks-dubbed\.pytest_tmp"
 > .\.venv\Scripts\python.exe -m pytest -p no:cacheprovider
 
-tests/test_cli.py ............
-tests/test_config.py .........
-tests/test_discovery.py .......
-tests/test_media.py ............
-tests/test_outputs.py .....................
-tests/test_pipeline.py ..............
-tests/test_proxy.py ..........
-tests/test_transcription.py ...........................
+tests\test_cli.py ...............
+tests\test_config.py ...............
+tests\test_discovery.py ...............
+tests\test_media.py ...............
+tests\test_outputs.py ..........................
+tests\test_pipeline.py ...............
+tests\test_preparation.py ..................................
+tests\test_prepare_cli.py ..................
+tests\test_proxy.py ..........
+tests\test_qa.py .........................................................
+tests\test_terminology.py ...............................
+tests\test_text_cleaning.py .....................................
+tests\test_transcription.py ...........................
+tests\test_verification.py .......................
 
-============================= 159 passed in 8.88s =============================
+============================ 363 passed in 12.80s =============================
 ```
 
-**Result:** **159 passed, 0 failed, 0 skipped, 0 errors** (8.88 s).
+**Result:** **363 passed, 0 failed, 0 skipped, 0 errors** (12.80 s).
+159 of these are the Phase 1 suite (unchanged); **204 are new Phase 2 cases**.
 
-No test calls the Groq API; the client is fully mocked, so the suite needs no
-real key and incurs no cost.
+No test calls the Groq API. The transcription client is mocked, and the two
+verification integration tests inject an offline client double that raises
+locally, so the suite performs **no network requests** and cannot incur charges.
 
-### 3.3 Lint, format and types
+### 3.2 Lint, format and types
 
 ```
 > .\.venv\Scripts\python.exe -m ruff check src tests
 All checks passed!
 
 > .\.venv\Scripts\python.exe -m ruff format --check src tests
-21 files already formatted
+34 files already formatted
 
 > .\.venv\Scripts\python.exe -m mypy
-Success: no issues found in 21 source files
+Success: no issues found in 34 source files
 ```
 
-**Result:** clean, with `mypy` running in `disallow_untyped_defs` mode.
-
-### 3.4 Real end-to-end run
+### 3.3 Real run on the genuine sample (no API calls)
 
 ```
-> .\.venv\Scripts\python.exe -m src.main --overwrite
+> .\.venv\Scripts\python.exe -m src.main --prepare-transcript `
+      output\BTR20140930-9439edit_test_30s.en.json --overwrite
 ```
 
-Stage by stage:
-
 ```
-Stage 1/7  Input validation
-  Source video : D:\Projects\al-brooks-dubbed\data\BTR20140930-9439edit.mp4
-  Size         : 526.8 MB
+QA findings  : 4 (max severity: high)
+  [high    ] duplicate_segment_duration_mismatch  Duplicated text spans very different durations (7.00s vs 16.00s)
+  [high    ] exact_duplicate_segment             Identical text in segments 0, 1
+  [medium  ] segment_suspiciously_long           Segment 1 lasts 16.00s, far longer than the 7.00s median
+  [info    ] terminology_detected                3 Al Brooks term(s) detected
 
-Stage 2/7  Media inspection (ffprobe)
-  Duration   : 10170.067s (169.50 minutes)
-  Format     : mov,mp4,m4a,3gp,3g2,mj2
-  Video      : h264 1368x736 @ 15.000 fps
-  Audio      : aac 2ch @ 44100 Hz
-
-Stage 3/7  Video extraction (first 30.00s)
-  Duration        : 30.133s (mode: copy)
-  Resolution      : 1368x736 (unchanged from source)
-
-Stage 4/7  Audio preparation (ffmpeg, mono 16000 Hz)
-  Prepared audio : BTR20140930-9439edit_test_30s.flac (816.3 KB, 30.00s)
-
-Stage 5/7  Groq transcription (model: whisper-large-v3-turbo)
-  Using HTTP proxy for the Groq API: http://127.0.0.1:1080
-  Transcription received: 236 character(s), 3 segment(s), language=English
-
-Stage 6/7  Output validation
-  All 4 artifacts are present, non-empty and parseable.
-
-Stage 7/7  Writing output artifacts
+Phase 2 preparation complete - STATUS: NEEDS_REVIEW
+  Segments prepared  : 3
+  Verification       : not_performed
 ```
 
-**Result:** exit code `0`.
+**Result:** exit code `0`. The known duplicate from the brief is flagged
+correctly, and the wording is preserved.
+
+### 3.4 Real verification against the Groq API (opt-in, one call)
 
 ```
-==================================================================
-Phase 1 complete - STATUS: SUCCESS
-==================================================================
-  Source video          : D:\Projects\al-brooks-dubbed\data\BTR20140930-9439edit.mp4
-  Source duration       : 10170.07s
-  Requested duration    : 30s
-  Extracted video       : D:\Projects\al-brooks-dubbed\output\BTR20140930-9439edit_test_30s.mp4
-  Extracted duration    : 30.13s (copy)
-  Transcript (plain)    : D:\Projects\al-brooks-dubbed\output\BTR20140930-9439edit_test_30s.en.txt
-  Transcript (JSON)     : D:\Projects\al-brooks-dubbed\output\BTR20140930-9439edit_test_30s.en.json
-  Media metadata        : D:\Projects\al-brooks-dubbed\output\BTR20140930-9439edit_test_30s.metadata.json
-  Transcription model   : whisper-large-v3-turbo
-  Language              : English
-  Transcript characters : 235
-  Timed segments        : 3
-==================================================================
+> .\.venv\Scripts\python.exe -m src.main --prepare-transcript `
+      output\BTR20140930-9439edit_test_30s.en.json --verify-transcript --overwrite
 ```
 
-### 3.5 Artifact verification
+```
+Verifying 1 duplicate group(s) against verify.flac (max 1 attempt(s))
+Using HTTP proxy for the Groq API: http://127.0.0.1:1080
+Transcription received: 236 character(s), 3 segment(s), language=English
+```
 
-**Extracted video** - `ffprobe`:
+**Result:** `duplicate_confirmed`.
+
+The audio was located automatically (an audio export beside the artifact was
+not present, so the 30 s interval was re-extracted from the extracted MP4 with
+FFmpeg). The independent transcription returned **the same duplicated wording**
+(2 occurrences in both the original and the alternative), so the repetition is
+present in the audio. **Nothing was removed** and the status remained
+`NEEDS_REVIEW`.
+
+Verification evidence recorded in the artifacts:
 
 ```json
 {
-  "streams": [
-    {"codec_name": "h264", "codec_type": "video", "width": 1368, "height": 736},
-    {"codec_name": "aac",  "codec_type": "audio", "sample_rate": "44100", "channels": 2}
-  ],
-  "format": {"format_name": "mov,mp4,m4a,3gp,3g2,mj2",
-             "duration": "30.133333", "size": "2806132"}
+  "performed": true,
+  "status": "duplicate_confirmed",
+  "method": "grok_retranscription",
+  "attempts": 1,
+  "supports_correction": false,
+  "evidence": {
+    "groups": [{
+      "segment_ids": ["0", "1"],
+      "occurrences_in_original": 2,
+      "occurrences_in_alternative": 2,
+      "alternative_has_duplicate_segments": true,
+      "verdict": "present_in_alternative"
+    }],
+    "original_characters": 232,
+    "alternative_characters": 232
+  }
 }
 ```
 
-Full decode check (`ffmpeg -f null -`) completed with **no errors**. Resolution
-matches the source exactly (1368x736) and audio/video are intact.
-
-**Transcript** (`BTR20140930-9439edit_test_30s.en.txt`):
-
-> Sorry about being a couple of minutes late. The bulls see the 60 minute chart
-> as forming Sorry about being a couple of minutes late. The bulls see the 60
-> minute chart as forming a wedge bull flag respecting the gap back here in
-> August.
-
-This matches the actual lecture audio. The opening sentence genuinely repeats
-in the source recording: the API returns it as two identical consecutive
-segments (`0.0–7.0 s` and `7.0–23.0 s`), which corroborates that this is in
-the audio rather than a transcription artefact.
-
-**Transcript JSON** - valid JSON containing only API-supported fields:
-`transcript`, `segments` (3 entries with real `start`/`end`), `language`,
-`api_reported_duration_seconds`, plus processing metadata. No fabricated
-confidence scores. API reported language `English` and audio duration
-`29.998 s`.
-
-### 3.6 Credential audit
+### 3.5 Raw artifact integrity
 
 ```
-> Get-ChildItem -Recurse logs, output, src, tests, pyproject.toml, .env.example |
-    Select-String -Pattern <the real GROQ_API_KEY>
-NO API KEY FOUND IN ANY FILE
+> (Get-FileHash output\BTR20140930-9439edit_test_30s.en.json).Hash
+8225ECE1EE86F3EBDC8E684B81390919099BF353E405E1C2C8598958E93A6312
 ```
 
-Scanning for `gsk_[A-Za-z0-9]{20,}` matched only deliberately fake test
-fixtures (`gsk_testONLYnotarealkey...`, `gsk_realtestingsecret...`) and their
-compiled `__pycache__` files. No real credential appears in any source file,
-log, output artifact or configuration file. The directory is not a Git
-repository, so nothing has been committed.
+Identical to the value recorded at the end of Phase 1, before any Phase 2 code
+existed. A test (`test_raw_files_are_never_modified`) asserts this by hash, and
+`test_duplicate_is_preserved_without_verification` asserts the duplicated
+sentence still appears twice in the cleaned text.
+
+### 3.6 Performance
+
+| Input | Analysis time |
+|---|---|
+| 30-second sample (45 words, 3 segments) | < 0.05 s |
+| Full lecture simulation (221,000 words, 400 segments) | **3.4 s** |
+
+The second figure was 148 s before optimisation. A regression test
+(`test_full_length_transcript_is_analysed_quickly`) fails if it exceeds 30 s.
+
+### 3.7 Credential audit
+
+No new secret handling was introduced. The API key is still read only from
+`GROQ_API_KEY`, still redacted by the logging filter, and `--prepare-transcript`
+works with no key at all (tested). A scan of `src`, `tests`, `output`, `logs`
+and the documentation files finds no real credential.
 
 ---
 
-## 4. Important finding: the proxy issue
+## 4. New outputs
 
-**Symptom:** the first real run failed at stage 5 with
-`HTTP 403 Forbidden`. This looked like an invalid API key or a missing model
-entitlement.
+For `lecture_test_30s.en.json`:
 
-**Diagnosis:** `GET /openai/v1/models` succeeded from PowerShell but returned
-403 from Python. The machine routes traffic through a local proxy
-(`http://127.0.0.1:1080`) configured in Windows *Internet Settings*. PowerShell
-and FFmpeg honour that setting; Python's `httpx` does **not**, so it connected
-directly and was rejected. The API key was valid throughout.
+| File | Purpose |
+|---|---|
+| `output/lecture_test_30s.en.clean.txt` | Cleaned, translation-ready English |
+| `output/lecture_test_30s.en.clean.json` | Prepared segments, `schema_version: 2` |
+| `output/lecture_test_30s.qa.json` | Structured findings, `schema_version: 1` |
 
-**Fix:** `src/transcription.py` now resolves the proxy in this order:
-`GROQ_PROXY` → `HTTPS_PROXY`/`HTTP_PROXY` → Windows registry proxy
-(`ProxyEnable`/`ProxyServer`), and passes an `httpx.Client(proxy=...)` to the
-Groq SDK when needed. The 403 diagnostic was also improved to explain the proxy
-possibility. Covered by 10 dedicated tests in `tests/test_proxy.py`.
+The `cleaning` block in the prepared JSON records proof of conservatism:
 
-**Relevance to later phases:** any future stage that makes network calls will
-hit the same trap. `src/transcription.resolve_proxy()` is the reusable entry
-point.
-
----
-
-## 5. Known limitations
-
-1. **pytest temp directory.** The default temp root is not writable on this
-   machine; pytest aborts after the run with
-   `PermissionError ... pytest-current`. Workaround documented in the README:
-   set `PYTEST_DEBUG_TEMPROOT` to a project-local folder. This is an
-   environment issue, not a code defect - the 159 tests all pass once the temp
-   root is set.
-2. **30 seconds only.** By design. Full-video processing (Phase 7) is not
-   implemented, and a 2 h 49 m source is far beyond a free Groq tier's daily
-   audio allowance.
-3. **No chunking or resumability.** A failed long run restarts from scratch.
-4. **Monotonic timing assumptions.** Segment timestamps come straight from the
-   API; no smoothing or overlap handling is applied.
-5. **English only.** The language is requested as English; the client is not
-   validated for other languages even though the API accepts a language code.
-6. **`whisper-large-v3-turbo` default is a judgement call.** It is faster and
-   cheaper than `whisper-large-v3`; if accuracy on fast, accented trading
-   speech proves insufficient, switch with `--model whisper-large-v3`.
-7. **Free-tier rate limits.** A single 30-second clip is ~0.5 audio minutes, so
-   this is not a practical constraint for Phase 1 but will be for Phase 7.
+```json
+{
+  "rewrote_words": false,
+  "grammar_corrected": false,
+  "translated": false,
+  "removed_content": false,
+  "raw_word_count": 45,
+  "cleaned_word_count": 45,
+  "unexpected_new_words": []
+}
+```
 
 ---
 
-## 6. Recommended next steps
+## 5. Bugs found and fixed during Phase 2
 
-**Do not start Phase 2 without explicit approval.** If you want to proceed,
-these are the natural follow-ups in order:
-
-1. **Decide on Git.** The directory is currently not a repository and no remote
-   exists. Initialising and committing requires your authorisation - it was
-   deliberately not done automatically.
-2. **Sanity-check the transcript at scale.** Run a few different 30-second
-   windows (e.g. `--duration 900`, `--duration 3600`) to see whether
-   `whisper-large-v3-turbo` holds up on this speaker across the whole lecture,
-   and compare against `whisper-large-v3`.
-3. **Cost model for full-length work.** Measure Groq's actual audio-minute
-   pricing and free-tier allowance before committing to a full-length design.
-4. **Phase 2 design spike** on a small sample: translate ~5 minutes, build the
-   trading-term glossary, and review the output before scaling.
-5. **Consider `--duration` defaults per phase** and add a chunked,
-   checkpointed processing mode so long runs are resumable.
+| Bug | Impact | Fix |
+|---|---|---|
+| `_open_brackets` dropped the bracket instead of the following space | `( spaced )` became `spaced)` | Rewrote the loop to keep the bracket |
+| `_check_coverage` returned early for single-segment transcripts | Bounds and completeness checks silently skipped | Split into `_check_adjacent_pairs`, `_check_bounds`, `_check_completeness` |
+| Out-of-order timestamps were never detected | Specified check missing | Added `segment_out_of_order` |
+| `Terminology.find` used an O(n²) overlap check | 148 s on a full lecture | Sorted sweep with a watermark |
+| Repeated-phrase detection scanned all n-gram sizes | Quadratic in transcript length | Seed-and-extend index |
+| `similarity()` was unbounded on long text | Potential multi-minute stall | Length prefilter + bounded prefix |
+| Verification retried permanent errors | An invalid key was retried up to `max_attempts` | Added `is_retryable_error()` and bail out |
+| Long segment heuristic too lax (2.5× median) | The known 16 s segment was not flagged | Multiplier 2.0, floor 10 s |
+| Repeated phrases reported 6 times for one repetition | Noise | Span-overlap clustering; the known example now yields 0 extra findings because the repetition is contiguous and already reported as a high-severity duplicate |
 
 ---
 
-## 7. Quick reference
+## 6. Known limitations
+
+1. **pytest temp directory** — unchanged from Phase 1; set
+   `PYTEST_DEBUG_TEMPROOT` to a project-local folder.
+2. **Verification needs audio** — without `--audio`, a sibling audio export or
+   the source video, verification cannot run. The command says exactly what is
+   missing. This is correct: it will not guess.
+3. **Similarity is approximate on very long text** — inputs beyond 20,000
+   characters are compared on a truncated prefix after a cheap length check.
+   This keeps the QA stage usable at full-lecture scale; it slightly weakens
+   detection of a mismatch that only appears late in a very long transcript.
+4. **Terminology matching is literal** — no stemming or lemmatisation, so
+   `bull` matches `bulls` via the alias list but an unlisted inflection is
+   missed.
+5. **No Persian equivalents yet** — all 35 `persian` fields are `null` by
+   design; filling them is Phase 3 work.
+6. **Timestamp heuristics** — the "unusually long" and "incomplete coverage"
+   thresholds are tuned for this lecture style (15 fps lecture video). A
+   different speaker may need different `QaThresholds`.
+7. **The duplicate is still unresolved by machine** — two transcriptions agree,
+   but a human should still listen and decide. That is the intended workflow,
+   not a defect.
+
+---
+
+## 7. Recommended next steps
+
+**Do not start Phase 3 without explicit approval.**
+
+1. **Listen to 0–23 s of the extracted video** and confirm whether Al Brooks
+   really says the opening sentence twice. The tooling deliberately stopped
+   short of deciding.
+2. **Fill in `persian` terminology** for the 10 terms named in the brief, with
+   the trader's approval. This is the main input Phase 3 needs.
+3. **Decide the translation approach** (local model vs. API) and estimate cost
+   for ~170 audio minutes before building anything.
+4. **Tune `QaThresholds`** on a longer sample (e.g. `--duration 600`) once
+   available, to confirm the duplicate and coverage heuristics hold up over 10
+   minutes rather than 30 seconds.
+5. **Decide how to handle `uncertain_review_required` segments in Phase 3** —
+   skip them, or translate and mark them.
+
+---
+
+## 8. Quick reference
 
 ```powershell
 cd D:\Projects\al-brooks-dubbed
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 
-# environment check
+# phase 1
 .\.venv\Scripts\python.exe -m src.main --check-env
-
-# list candidates
-.\.venv\Scripts\python.exe -m src.main --list-inputs
-
-# run Phase 1
 .\.venv\Scripts\python.exe -m src.main --overwrite
 
-# tests
-$env:PYTEST_DEBUG_TEMPROOT = "$PWD\.pytest_tmp"
-.\.venv\Scripts\python.exe -m pytest
+# phase 2 (no API calls)
+.\.venv\Scripts\python.exe -m src.main --prepare-transcript output\BTR20140930-9439edit_test_30s.en.json
+
+# phase 2 with API verification
+.\.venv\Scripts\python.exe -m src.main --prepare-transcript output\BTR20140930-9439edit_test_30s.en.json --verify-transcript --overwrite
 
 # quality gates
+$env:PYTEST_DEBUG_TEMPROOT = "$PWD\.pytest_tmp"
+.\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check src tests
 .\.venv\Scripts\python.exe -m ruff format --check src tests
 .\.venv\Scripts\python.exe -m mypy

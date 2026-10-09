@@ -93,3 +93,28 @@ class OutputError(AlBrooksError):
 
 class OutputExistsError(OutputError):
     """An output artifact already exists and overwriting was not requested."""
+
+
+# ----------------------------------------------------------------------
+# Phase 2: transcript quality assurance and preparation
+# ----------------------------------------------------------------------
+class TranscriptError(AlBrooksError):
+    """Base class for Phase 2 transcript preparation failures."""
+
+    exit_code = 7
+
+
+class TranscriptFormatError(TranscriptError):
+    """A transcription artifact is missing, unreadable or not understood."""
+
+
+class TerminologyError(TranscriptError):
+    """The bundled terminology resource is missing or malformed."""
+
+
+class VerificationError(TranscriptError):
+    """The optional re-transcription check could not be completed."""
+
+
+class VerificationUnavailableError(VerificationError):
+    """Verification was requested but the required audio is not available."""

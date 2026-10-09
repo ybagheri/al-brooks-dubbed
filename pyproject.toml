@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "al-brooks-dubbed"
-version = "0.1.0"
+version = "0.2.0"
 description = "Phase 1: video segmentation and English transcription pipeline for the Al Brooks dubbing project."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,6 +27,11 @@ al-brooks-dubbed = "src.cli:main"
 
 [tool.setuptools]
 packages = ["src"]
+
+[tool.setuptools.package-data]
+# The Al Brooks glossary must ship with the package, otherwise terminology
+# lookup fails on a non-editable install.
+src = ["resources/*.json"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
