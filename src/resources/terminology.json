@@ -59,7 +59,8 @@
       "aliases": ["wedge flag"],
       "category": "pattern",
       "notes": "Bull flag with a rising wedge structure; one of Al Brooks' core continuation patterns.",
-      "persian": "پرچم صعودی گوه‌ای"
+      "persian": "wedge bull flag",
+      "speak_original": true
     },
     {
       "id": "bull_flag",
@@ -67,7 +68,8 @@
       "aliases": ["bull flags"],
       "category": "pattern",
       "notes": "Strong bullish continuation flag after a spike.",
-      "persian": "پرچم صعودی"
+      "persian": "bull flag",
+      "speak_original": true
     },
     {
       "id": "bear_flag",
@@ -75,7 +77,8 @@
       "aliases": ["bear flags"],
       "category": "pattern",
       "notes": "Bearish mirror of a bull flag.",
-      "persian": "پرچم نزولی"
+      "persian": "bear flag",
+      "speak_original": true
     },
     {
       "id": "flag",
@@ -91,7 +94,8 @@
       "aliases": ["trading ranges"],
       "category": "structure",
       "notes": "A sideways price area; often rendered as 'range' in speech.",
-      "persian": "محدودهٔ معاملاتی"
+      "persian": "trading range",
+      "speak_original": true
     },
     {
       "id": "measured_move",
@@ -99,7 +103,8 @@
       "aliases": ["measured moves"],
       "category": "projection",
       "notes": "Projected target derived from the height of a prior move.",
-      "persian": "حرکت اندازه‌گیری‌شده"
+      "persian": "measured move",
+      "speak_original": true
     },
     {
       "id": "price_action",
@@ -107,7 +112,8 @@
       "aliases": ["price actions"],
       "category": "core",
       "notes": "Central concept of the whole course.",
-      "persian": "رفتار قیمت"
+      "persian": "price action",
+      "speak_original": true
     },
     {
       "id": "gap",
@@ -115,7 +121,8 @@
       "aliases": ["gaps"],
       "category": "structure",
       "notes": "Price area with no trading between two sessions. Also an ordinary English word, so matches are low confidence.",
-      "persian": "گپ"
+      "persian": "gap",
+      "speak_original": true
     },
     {
       "id": "breakout",
@@ -123,7 +130,8 @@
       "aliases": ["breakouts"],
       "category": "structure",
       "notes": "Move out of a trading range or flag.",
-      "persian": "شکست"
+      "persian": "breakout",
+      "speak_original": true
     },
     {
       "id": "pullback",
@@ -131,7 +139,8 @@
       "aliases": ["pullbacks", "pull back"],
       "category": "structure",
       "notes": "Retrace against the direction of the trend.",
-      "persian": "پولبک"
+      "persian": "pullback",
+      "speak_original": true
     },
     {
       "id": "reversal",
@@ -139,7 +148,8 @@
       "aliases": ["reversals"],
       "category": "structure",
       "notes": "Change in the prevailing trend direction.",
-      "persian": "برگشت"
+      "persian": "reversal",
+      "speak_original": true
     },
     {
       "id": "wedge",

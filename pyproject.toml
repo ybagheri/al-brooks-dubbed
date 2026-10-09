@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "al-brooks-dubbed"
-version = "0.3.0"
+version = "0.3.1"
 description = "Phase 1: video segmentation and English transcription pipeline for the Al Brooks dubbing project."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -414,8 +414,11 @@ request actually completed.
 `gap`, `breakout`, `pullback`, `reversal`, and more).
 
 Phase 2 uses it **only for annotation**. A term match never alters the source
-text. Each entry has an empty `"persian"` field ready for approved equivalents
-in the translation phase:
+text.
+
+**The Persian track keeps these terms in English.** Persian traders say
+"wedge bull flag", not a literal Persian rendering, so the entry records the
+English term as its spoken form and flags the decision explicitly:
 
 ```json
 {
@@ -423,18 +426,32 @@ in the translation phase:
   "canonical": "bull flag",
   "category": "pattern",
   "notes": "Strong bullish continuation flag after a spike.",
-  "persian": null
+  "persian": "bull flag",
+  "speak_original": true
 }
 ```
 
+`speak_original: true` matters: an English value sitting in a field called
+`persian` otherwise reads as a typo to whoever maintains it next. A test
+enforces that every spoken-as value equal to the English original carries the
+flag.
+
+To translate a term instead, replace `persian` with the Persian text and drop
+the flag:
+
+```json
+"persian": "پرچم صعودی"
+```
+
 Terms that are also ordinary English words (`gap`, `bull`, `channel`) are
-flagged as `ambiguous` so downstream stages do not over-trust them.
+marked `ambiguous` so downstream stages do not over-trust them.
 
 The same file carries two extension points you can edit without touching code:
 
 | Key | Purpose |
 |---|---|
-| `terms[].persian` | Approved Persian equivalent (empty until the translation phase). |
+| `terms[].persian` | What the term is spoken as in the Persian track. |
+| `terms[].speak_original` | `true` when that is deliberately the English original. |
 | `known_confusions` | Mistranscriptions confirmed in this material. |
 | `confusable_extra_anchors` | Word pairs used to anchor confusable detection. |
 

@@ -1,14 +1,30 @@
 # Handoff
 
-**Phase:** 2 (complete) + confusable-term detection added after real-data calibration
+**Phase:** 2 (complete) + confusable-term detection + glossary decision
 **Status:** ✅ Complete and verified against the real lecture, 30-second and 10-minute samples
 **Date:** 2026-10-09
-**Version:** 0.3.0
+**Version:** 0.3.1
 **Repository:** local Git repo on `main`. A GitHub remote (`origin`) already existed and was **not** modified or pushed to by me.
 
 ---
 
-## 0. What changed since the Phase 2 handoff
+## 0a. Glossary decision (0.3.1)
+
+**The Persian track keeps Al Brooks terms in English.** Persian traders say
+"wedge bull flag", not a literal Persian rendering. All ten core terms are
+recorded with the English term as their spoken form plus
+`speak_original: true`, so the decision is explicit rather than looking like a
+typo in a field named `persian`.
+
+To translate a term instead: replace `persian`, drop the flag. A test enforces
+that any spoken-as value equal to the English original carries the flag.
+
+The 25 remaining entries stay unset on purpose - Phase 2 only annotates with
+them.
+
+---
+
+## 0b. What changed since the Phase 2 handoff
 
 A 10-minute sample (`--duration 600`) was transcribed and analysed. It exposed
 that the most damaging transcription errors were going undetected, so
@@ -360,8 +376,8 @@ decision to you.
    are needed for this speaker.
 3. **Check the one ungrammatical spot** at ≈84 s ("there were problems with the
    … it.") — the only gap that still looks like lost speech rather than a pause.
-4. **Fill in `persian` terminology** for the 10 terms named in the brief, with
-   the trader's approval. This is the main input Phase 3 needs.
+4. **Fill in the remaining 25 glossary entries** - optional, and they will be
+   English too unless you say otherwise.
 5. **Decide the translation approach** (local model vs. API) and estimate cost
    for ~170 audio minutes before building anything.
 6. **Decide how to handle `uncertain_review_required` segments in Phase 3** —

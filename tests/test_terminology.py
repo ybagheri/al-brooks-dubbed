@@ -50,41 +50,68 @@ def test_brief_terms_are_present() -> None:
     assert expected <= found
 
 
-def test_brief_terms_have_approved_persian() -> None:
-    """The ten terms named in the brief must be translated before Phase 3."""
+def test_brief_terms_are_spoken_in_english() -> None:
+    """The Persian track keeps these terms in English, by the trader's choice.
+
+    Persian traders say "wedge bull flag" rather than a literal Persian
+    rendering, so the spoken form is the English term and ``speak_original``
+    records that it is deliberate.
+    """
 
     expected = {
-        "wedge_bull_flag": "پرچم صعودی گوه‌ای",
-        "bull_flag": "پرچم صعودی",
-        "bear_flag": "پرچم نزولی",
-        "trading_range": "محدودهٔ معاملاتی",
-        "measured_move": "حرکت اندازه‌گیری‌شده",
-        "price_action": "رفتار قیمت",
-        "gap": "گپ",
-        "breakout": "شکست",
-        "pullback": "پولبک",
-        "reversal": "برگشت",
+        "wedge_bull_flag": "wedge bull flag",
+        "bull_flag": "bull flag",
+        "bear_flag": "bear flag",
+        "trading_range": "trading range",
+        "measured_move": "measured move",
+        "price_action": "price action",
+        "gap": "gap",
+        "breakout": "breakout",
+        "pullback": "pullback",
+        "reversal": "reversal",
     }
     terms = load_terminology()
-    for term_id, persian in expected.items():
+    for term_id, spoken in expected.items():
         entry = terms.get(term_id)
         assert entry is not None, f"{term_id} missing from the glossary"
-        assert entry.persian == persian, f"{term_id} has the wrong Persian equivalent"
+        assert entry.spoken_as == spoken, f"{term_id} is spoken as {entry.spoken_as!r}"
+        assert entry.is_untranslated is True, f"{term_id} is not marked speak_original"
+        assert entry.spoken_as == entry.canonical, f"{term_id} should speak the original"
 
 
 def test_translation_count_is_reported() -> None:
     summary = load_terminology().summary()
     assert summary["translated_terms"] >= 10
+    assert summary["kept_in_english"] >= 10
     assert summary["term_count"] > summary["translated_terms"]
 
 
-def test_persian_values_are_persian_script() -> None:
-    """Guards against a Latin fallback sneaking into the glossary."""
+def test_untranslated_terms_have_a_decision_flag() -> None:
+    """Every spoken-as value must be paired with an explicit keep-English flag.
+
+    Without the flag, an English value sitting in a field called "persian"
+    looks like a typo to the next person who reads it.
+    """
 
     for entry in load_terminology().entries:
-        if not entry.persian:
-            continue
-        assert any("؀" <= char <= "ۿ" for char in entry.persian), entry.id
+        if entry.persian and entry.persian == entry.canonical:
+            assert entry.speak_original is True, entry.id
+
+
+def test_speak_original_defaults_to_false() -> None:
+    entries = _parse_entries({"schema_version": 1, "terms": [_entry(id="x", canonical="x")]})
+    assert entries[0].speak_original is False
+    assert entries[0].is_untranslated is False
+
+
+def test_speak_original_must_be_boolean() -> None:
+    with pytest.raises(TerminologyError, match="non-boolean 'speak_original'"):
+        _parse_entries(
+            {
+                "schema_version": 1,
+                "terms": [_entry(id="x", canonical="x", speak_original="yes")],
+            }
+        )
 
 
 def test_no_duplicate_ids_or_canonicals() -> None:
@@ -210,16 +237,16 @@ def test_console_reconfiguration_is_safe() -> None:
 
 
 def test_persian_survives_a_log_file(tmp_path: Path) -> None:
-    """A Persian term written through the writer must be readable as UTF-8."""
+    """A spoken-as value written through the writer must be readable as UTF-8."""
 
     from src.outputs import OutputWriter
 
     entry = load_terminology().get("wedge_bull_flag")
-    assert entry is not None and entry.persian
+    assert entry is not None and entry.spoken_as
     path = OutputWriter(tmp_path).write_transcript_text(
-        tmp_path / "fa.txt", f"{entry.canonical} = {entry.persian}"
+        tmp_path / "term.txt", f"{entry.canonical} = {entry.spoken_as}"
     )
-    assert entry.persian in path.read_text(encoding="utf-8")
+    assert entry.spoken_as in path.read_text(encoding="utf-8")
 
 
 def test_len() -> None:

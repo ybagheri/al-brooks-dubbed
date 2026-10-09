@@ -245,7 +245,14 @@ AMBIGUOUS_CATEGORIES: Final[frozenset[str]] = frozenset({"structure", "market"})
 
 @dataclass(frozen=True)
 class TerminologyEntry:
-    """One domain term."""
+    """One domain term.
+
+    ``persian`` holds what the term should be *spoken as* in the Persian
+    track. For this lecture series that is usually the English original:
+    Persian traders say "wedge bull flag", not a literal Persian rendering.
+    ``speak_original`` records that decision explicitly, so a later stage
+    cannot mistake an English value for a typo.
+    """
 
     id: str
     canonical: str
@@ -253,12 +260,25 @@ class TerminologyEntry:
     notes: str = ""
     persian: str | None = None
     aliases: tuple[str, ...] = ()
+    speak_original: bool = False
 
     @property
     def ambiguous(self) -> bool:
         """True when the term is also an ordinary English word."""
 
         return self.category in AMBIGUOUS_CATEGORIES
+
+    @property
+    def spoken_as(self) -> str | None:
+        """What a dubbing script should actually say for this term."""
+
+        return self.persian
+
+    @property
+    def is_untranslated(self) -> bool:
+        """True when the term is deliberately kept in English."""
+
+        return self.speak_original
 
     def surfaces(self) -> tuple[str, ...]:
         """Every spelling that should match this term, canonical form first."""
@@ -643,6 +663,7 @@ class Terminology:
             "term_count": len(self._entries),
             "categories": sorted({entry.category for entry in self._entries}),
             "translated_terms": sum(1 for entry in self._entries if entry.persian),
+            "kept_in_english": sum(1 for entry in self._entries if entry.speak_original),
         }
 
 
@@ -678,6 +699,12 @@ def _parse_entries(payload: dict[str, Any]) -> list[TerminologyEntry]:
             raise TerminologyError(f"Terminology entry '{term_id}' has a non-list 'aliases'.")
 
         persian = raw.get("persian")
+        speak_original = raw.get("speak_original", False)
+        if not isinstance(speak_original, bool):
+            raise TerminologyError(
+                f"Terminology entry '{term_id}' has a non-boolean 'speak_original'."
+            )
+
         entries.append(
             TerminologyEntry(
                 id=term_id,
@@ -686,6 +713,7 @@ def _parse_entries(payload: dict[str, Any]) -> list[TerminologyEntry]:
                 notes=str(raw.get("notes", "")),
                 persian=str(persian) if persian else None,
                 aliases=tuple(str(alias) for alias in aliases_raw),
+                speak_original=speak_original,
             )
         )
     return entries

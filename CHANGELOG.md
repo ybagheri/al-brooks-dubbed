@@ -5,6 +5,37 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-10-09
+
+Glossary decision: the Persian track keeps Al Brooks terms in English.
+
+### Changed
+
+- `terms[].persian` for the ten core terms now holds the English term, and a
+  new `terms[].speak_original: true` flag records that this is deliberate.
+  Persian traders say "wedge bull flag" rather than a literal Persian
+  rendering. To translate a term instead, replace `persian` and drop the flag.
+- `TerminologyEntry` gains `spoken_as`, `is_untranslated` and
+  `speak_original`; `summary()` reports `kept_in_english`.
+- Tests enforce that any spoken-as value equal to the English original carries
+  the flag, so the next maintainer does not "fix" it as a typo.
+
+### Added
+
+- `enable_utf8_console()` reconfigures stdout/stderr to UTF-8 at the start of
+  `main()`. Printing a Persian line previously raised `UnicodeEncodeError`
+  because a Windows console defaults to cp1252 - this would have killed every
+  Phase 3 run the moment it printed a translated line. Verified end to end
+  through a subprocess: identical codepoints, exit code 0.
+
+### Fixed
+
+- The `duplicate_confirmed` verdict no longer claims the speaker said it twice.
+  It now states plainly that reproducing a duplicate with the *same* model is
+  not proof, because a deterministic model repeats its own mistake. This was
+  confirmed by listening: the trader reports the opening sentence was said
+  once, so the earlier inference was wrong.
+
 ## [0.3.0] - 2026-10-09
 
 Confusable-term detection, added after analysing a 10-minute sample of the real
@@ -322,6 +353,7 @@ verified end to end against a real lecture video.
 - The Groq free tier limits audio minutes per day, which matters for later
   full-length phases but not for a 30-second test.
 
+[0.3.1]: https://example.invalid/al-brooks-dubbed/releases/0.3.1
 [0.3.0]: https://example.invalid/al-brooks-dubbed/releases/0.3.0
 [0.2.0]: https://example.invalid/al-brooks-dubbed/releases/0.2.0
 [0.1.0]: https://example.invalid/al-brooks-dubbed/releases/0.1.0
