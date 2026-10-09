@@ -173,6 +173,7 @@ class TranscriptPreparer:
             terminology_summary={
                 **self.terminology.summary(),
                 "term_ids_detected": self.terminology.term_ids_in(cleaned_text),
+                "known_confusions_detected": self._confusion_summary(cleaned_text),
             },
             source_metadata={
                 "source_file": raw.source_file,
@@ -536,6 +537,34 @@ class TranscriptPreparer:
             if joined.strip():
                 return joined
         return clean_text(raw.text)
+
+    def _confusion_summary(self, text: str) -> list[dict[str, Any]]:
+        """Words that are probably mistranscriptions, for the translation stage.
+
+        These are passed through so a later translator can refuse to translate
+        them literally. Nothing is corrected here: only the audio can settle
+        whether the speaker actually said the wrong word.
+        """
+
+        confusions = self.terminology.find_confusables(text)
+        if not confusions:
+            return []
+
+        tokens = word_tokens(text)
+        summary: list[dict[str, Any]] = []
+        for confusion in confusions:
+            # find_confusables de-duplicates by (wrong, right), so the real
+            # occurrence count has to come from the text itself.
+            summary.append(
+                {
+                    "word": confusion.word,
+                    "suspected_word": confusion.suspected_word,
+                    "occurrences": sum(1 for token in tokens if token == confusion.word),
+                    "source": confusion.source,
+                    "example_context": confusion.context,
+                }
+            )
+        return summary
 
     def _cleaning_summary(
         self, raw: RawTranscript, segments: tuple[CleanSegment, ...]

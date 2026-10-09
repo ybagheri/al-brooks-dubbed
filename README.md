@@ -326,13 +326,14 @@ guessing.
 | `segment_end_before_start` | critical | The segment has no positive duration. |
 | `segment_out_of_order` | high | Segments are not in chronological order. |
 | `segment_timestamp_out_of_bounds` | high | A timestamp lies outside the audio. |
-| `segment_gap` | medium | Audio with no transcript covering it. |
+| `segment_gap` | low | Audio with no transcript covering it. |
 | `segment_overlap` | medium | Two segments claim the same audio. |
 | `transcript_segment_mismatch` | high / medium | The transcript and segments disagree. |
 | `segment_suspiciously_short` | low | An implausibly brief segment. |
 | `segment_suspiciously_long` | medium | Far longer than the median segment. |
 | `incomplete_speech_at_start` | medium | Transcription starts after 0s. |
 | `incomplete_speech_at_end` | medium | Transcription stops before the audio ends. |
+| `confusable_term` | medium | A word is probably a mistranscription of a domain term. |
 | `terminology_detected` | info | Al Brooks vocabulary was found and annotated. |
 
 Severity drives the run status: any `critical`, `high` or `medium` finding makes
@@ -341,6 +342,49 @@ the CLI report `STATUS: NEEDS_REVIEW`.
 > Repetition is **not** automatically an error. Trading lectures deliberately
 > restate ideas and repeat terminology, so repeated phrases are reported at
 > `low` severity and never removed.
+
+> Speaker pauses are **not** automatically an error. This lecture is live
+> trading commentary, so multi-second silences while charts are read are
+> normal. Gaps are reported at `low` severity for information only.
+
+### Confusable term detection
+
+The most damaging transcription errors are not garbled words - they are
+perfectly readable English with the wrong technical meaning. In the 10-minute
+sample of this lecture the API produced:
+
+| Written | Should be | Count |
+|---|---|---|
+| `training range` | `trading range` | 6 |
+| `bare bar` / `bare body` | `bear bar` / `bear body` | 3 |
+
+Left alone, these would be translated literally and a Persian trader would
+receive a term that was never used. The QA stage flags them as
+`confusable_term` and never changes the text - only the audio can settle it.
+
+Detection uses two complementary mechanisms, because neither alone is precise:
+
+1. **Curated confusions** (`known_confusions` in `terminology.json`). Mistakes
+   a human has confirmed occur in this material. Reliable, and **you can add
+   entries** as you find more:
+
+   ```json
+   {
+     "wrong": "training",
+     "right": "trading",
+     "note": "Heard in the BTR20140930 lecture: 'training range' should be 'trading range'."
+   }
+   ```
+
+2. **Anchored single-edit detection.** A candidate is only reported when the
+   neighbouring word matches a known domain word *exactly*
+   (`confusable_extra_anchors`), so a generic word can never be flagged on its
+   own.
+
+On the 10-minute sample this reports the two real errors and nothing else.
+A wider edit distance was tried and rejected: at two edits, `clear breakout`
+becomes indistinguishable from the real `bare bar` mistake, and the false
+positives swamp the true findings.
 
 ### The cautious recovery strategy
 
@@ -386,6 +430,14 @@ in the translation phase:
 Terms that are also ordinary English words (`gap`, `bull`, `channel`) are
 flagged as `ambiguous` so downstream stages do not over-trust them.
 
+The same file carries two extension points you can edit without touching code:
+
+| Key | Purpose |
+|---|---|
+| `terms[].persian` | Approved Persian equivalent (empty until the translation phase). |
+| `known_confusions` | Mistranscriptions confirmed in this material. |
+| `confusable_extra_anchors` | Word pairs used to anchor confusable detection. |
+
 ### Cleaned JSON schema (version 2)
 
 `output/<name>_test_30s.en.clean.json`:
@@ -430,9 +482,10 @@ No word-level timestamps are fabricated.
 ### Performance
 
 The QA stage is designed for full-length material. A synthetic 221,000-word
-transcript (a whole 2 h 49 m lecture) analyses in about **3 seconds**. Repeated
+transcript (a whole 2 h 49 m lecture) analyses in about **6 seconds**. Repeated
 phrases are found with a seed-and-extend index rather than an exhaustive n-gram
-sweep, and long-text similarity is bounded.
+sweep, confusable detection is indexed on the anchor word, and long-text
+similarity is bounded.
 
 ---
 

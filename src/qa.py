@@ -73,6 +73,7 @@ class FindingType(StringEnum):
     INCOMPLETE_SPEECH_START = "incomplete_speech_at_start"
     INCOMPLETE_SPEECH_END = "incomplete_speech_at_end"
     TERMINOLOGY_DETECTED = "terminology_detected"
+    CONFUSABLE_TERM = "confusable_term"
     NO_SEGMENTS = "no_segments"
 
 
@@ -262,6 +263,7 @@ class TranscriptQaAnalyzer:
         findings.extend(self._duplicate_findings(segments, duplicate_groups))
         findings.extend(self._check_repeated_phrases(raw, segments))
         findings.extend(self._check_terminology(raw, segments))
+        findings.extend(self._check_confusable_terms(raw, segments))
 
         segment_flags = _collect_segment_flags(findings)
         ordered = tuple(sorted(findings, key=_finding_sort_key))
@@ -478,17 +480,18 @@ class TranscriptQaAnalyzer:
                 findings.append(
                     QAFinding(
                         type=FindingType.SEGMENT_GAP,
-                        severity=Severity.MEDIUM,
+                        severity=Severity.LOW,
                         summary=(
                             f"{delta:.2f}s gap between segments {previous.key} and {current.key}"
                         ),
                         explanation=(
-                            "No transcript covers this interval. It may be silence, but "
-                            "it may also be speech the API skipped."
+                            "No transcript covers this interval. For a live trader reading "
+                            "charts this is most likely an ordinary pause, but speech may "
+                            "also have been skipped, so it is reported for review only."
                         ),
                         suggested_action=(
-                            "Listen to the gap; a later translation stage should keep the "
-                            "pause explicit rather than merge across it."
+                            "Check whether the speaker pauses there. A translation should "
+                            "keep the pause explicit rather than merge across it."
                         ),
                         segment_ids=(previous.key, current.key),
                         time_range=TimeRange(previous.end, current.start),
@@ -899,6 +902,83 @@ class TranscriptQaAnalyzer:
     # ------------------------------------------------------------------
     # Terminology (annotation only)
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Confusable domain terms (advisory only)
+    # ------------------------------------------------------------------
+    def _check_confusable_terms(
+        self, raw: RawTranscript, segments: Sequence[_TimedSegment]
+    ) -> list[QAFinding]:
+        """Report words that are probably mistranscriptions of domain terms.
+
+        Speech-to-text routinely renders "trading range" as "training range"
+        and "bear bar" as "bare bar". Both read as ordinary English, so nothing
+        else in the pipeline would notice, yet translating them literally
+        produces a term the trader never used.
+
+        The check is anchored on an exact neighbouring word and is therefore
+        precise, but it remains advisory: nothing is changed.
+        """
+
+        confusions = self.terminology.find_confusables(raw.text)
+        if not confusions:
+            return []
+
+        by_word: dict[str, list[Any]] = {}
+        for confusion in confusions:
+            by_word.setdefault(confusion.word, []).append(confusion)
+
+        findings: list[QAFinding] = []
+        for word, group in sorted(by_word.items()):
+            contexts = sorted({item.context for item in group if item.context})
+            findings.append(
+                QAFinding(
+                    type=FindingType.CONFUSABLE_TERM,
+                    severity=Severity.MEDIUM,
+                    summary=(
+                        f"{word!r} may be a mis-transcription of "
+                        f"{group[0].suspected_word!r} ({len(group)}x)"
+                    ),
+                    explanation=(
+                        f"The transcript contains {word!r} where the domain "
+                        f"vocabulary suggests {group[0].suspected_word!r} "
+                        f"(edit distance {group[0].distance}), for example "
+                        f"{', '.join(repr(context) for context in contexts[:3])}. "
+                        "Such a substitution reads as normal English but carries "
+                        "the wrong technical meaning, and translating it literally "
+                        "would produce an unusable term. The text is left "
+                        "unchanged: only the audio can settle it."
+                    ),
+                    suggested_action=(
+                        "Listen to the affected range and confirm the word before "
+                        "translating. Do not correct it silently."
+                    ),
+                    segment_ids=self._segments_containing_words(segments, group),
+                    evidence={
+                        "suspected_word": group[0].suspected_word,
+                        "word": word,
+                        "occurrences": len(group),
+                        "edit_distance": group[0].distance,
+                        "contexts": contexts[:10],
+                    },
+                )
+            )
+        return findings
+
+    @staticmethod
+    def _segments_containing_words(
+        segments: Sequence[_TimedSegment], confusions: Any
+    ) -> tuple[str, ...]:
+        """Map suspected tokens back onto the segments that contain them."""
+
+        words = {item.word for item in confusions}
+        if not words or not segments:
+            return ()
+        found: list[str] = []
+        for segment in segments:
+            if words & set(word_tokens(segment.text)) and segment.key not in found:
+                found.append(segment.key)
+        return tuple(found)
+
     def _check_terminology(
         self, raw: RawTranscript, segments: Sequence[_TimedSegment]
     ) -> list[QAFinding]:

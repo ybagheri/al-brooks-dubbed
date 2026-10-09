@@ -1,10 +1,35 @@
 # Handoff
 
-**Phase:** 2 — transcript quality assurance and preparation
-**Status:** ✅ Complete and verified against the real 30-second sample, including one real Groq verification call
+**Phase:** 2 (complete) + confusable-term detection added after real-data calibration
+**Status:** ✅ Complete and verified against the real lecture, 30-second and 10-minute samples
 **Date:** 2026-10-09
-**Version:** 0.2.0
-**Repository:** local Git repo on `main`. A GitHub remote (`origin`) already existed and was **not** modified or pushed to.
+**Version:** 0.3.0
+**Repository:** local Git repo on `main`. A GitHub remote (`origin`) already existed and was **not** modified or pushed to by me.
+
+---
+
+## 0. What changed since the Phase 2 handoff
+
+A 10-minute sample (`--duration 600`) was transcribed and analysed. It exposed
+that the most damaging transcription errors were going undetected, so
+confusable-term detection was added.
+
+| Item | Result |
+|---|---|
+| Real errors now caught | `training range` ×6 → `trading range`; `bare bar`/`bare body` ×3 → `bear bar`/`bear body` |
+| False positives on that sample | **0** |
+| Findings on the 10-minute sample | 21 (2 high, 7 medium, 11 low, 1 info) |
+| `segment_gap` severity | lowered `medium` → `low` (live trader pauses are normal) |
+| Tests | 418 passing (55 new), no network, no charges |
+
+### An earlier claim I withdrew
+
+I first reported "≈42 seconds of missing content" from the 8 transcript gaps.
+**That was wrong.** The speaker is trading live and pauses for several seconds
+to read charts; a 1.93 words/second rate is normal for intermittent speech. Gaps
+are now `low` severity and explicitly described as likely pauses. The one case
+still worth a listen is the ungrammatical *"there were problems with the …
+it."* at ≈84 s.
 
 ---
 
@@ -24,6 +49,7 @@ the raw artifacts.
 | `src/verification.py` | Optional bounded re-transcription and verdict logic |
 | `src/preparation.py` | Three-stage orchestration and artifact writing |
 | `src/enums.py` | Python 3.10-compatible string enum |
+| `src/terminology.py` | **extended** with confusable detection and curated confusions |
 | `src/outputs.py` | **extended** with `PreparedPaths` and a public atomic writer |
 | `src/transcription.py` | **extended** with `is_retryable_error()` |
 | `src/errors.py` | **extended** with the Phase 2 exception hierarchy (exit code 7) |
@@ -46,6 +72,7 @@ tests/test_terminology.py
 tests/test_verification.py
 tests/test_preparation.py
 tests/test_prepare_cli.py
+tests/test_confusables.py
 ```
 
 ### Files modified
@@ -96,11 +123,12 @@ tests\test_text_cleaning.py .....................................
 tests\test_transcription.py ...........................
 tests\test_verification.py .......................
 
-============================ 363 passed in 12.80s =============================
+============================ 418 passed in 26.47s =============================
 ```
 
-**Result:** **363 passed, 0 failed, 0 skipped, 0 errors** (12.80 s).
-159 of these are the Phase 1 suite (unchanged); **204 are new Phase 2 cases**.
+**Result:** **418 passed, 0 failed, 0 skipped, 0 errors** (26.47 s).
+159 are the Phase 1 suite, 204 the original Phase 2 cases, and **55 cover
+confusable detection**.
 
 No test calls the Groq API. The transcription client is mocked, and the two
 verification integration tests inject an offline client double that raises
@@ -203,10 +231,13 @@ sentence still appears twice in the cleaned text.
 | Input | Analysis time |
 |---|---|
 | 30-second sample (45 words, 3 segments) | < 0.05 s |
-| Full lecture simulation (221,000 words, 400 segments) | **3.4 s** |
+| 10-minute sample (1,156 words, 88 segments) | < 0.1 s |
+| Full lecture simulation (221,000 words, 400 segments) | **6.2 s** |
 
-The second figure was 148 s before optimisation. A regression test
+The full-lecture figure was 148 s before optimisation. A regression test
 (`test_full_length_transcript_is_analysed_quickly`) fails if it exceeds 30 s.
+Confusable detection is indexed on the anchor's second word, so the sweep costs
+one dictionary lookup per token.
 
 ### 3.7 Credential audit
 
@@ -256,6 +287,31 @@ The `cleaning` block in the prepared JSON records proof of conservatism:
 | Verification retried permanent errors | An invalid key was retried up to `max_attempts` | Added `is_retryable_error()` and bail out |
 | Long segment heuristic too lax (2.5× median) | The known 16 s segment was not flagged | Multiplier 2.0, floor 10 s |
 | Repeated phrases reported 6 times for one repetition | Noise | Span-overlap clustering; the known example now yields 0 extra findings because the repetition is contiguous and already reported as a high-severity duplicate |
+| `damerau_levenshtein` early exit returned distances beyond the limit | 196 false positives on the 10-minute sample | Rewrote the function to return the exact distance and let the caller threshold it; added tests against known values |
+| `bar` was in the confusable stoplist | The "bear bar" anchor was silently dropped | Stoplist now covers only ordinary English; domain words are excluded by a vocabulary check instead |
+| Confusion `occurrences` counted de-duplicated entries | Reported 1 instead of 6 | Count occurrences directly from the token list |
+
+---
+
+## 5b. Design notes worth keeping
+
+**Why confusable detection is anchored.** A single-word edit-distance scan
+cannot work here: the lecture is full of correct English that looks close to
+domain vocabulary ("the bulls", "tried to reverse down", "near the top",
+"more"). Requiring the *neighbouring* word to match a domain term exactly
+removes all of that noise.
+
+**Why the generic distance is one edit, not two.** At distance two, `clear
+breakout` is structurally identical to the real `bare bar` mistake - a
+four-letter non-domain word two edits from `bear`. No heuristic separates them.
+Distance-two cases are therefore curated data (`known_confusions`), decided by
+a human, rather than guessed.
+
+**Why the duplicate is still not auto-resolved.** Three independent
+transcriptions (30 s, 30 s verification, 600 s) all repeat the opening
+sentence. Two-way agreement is the strongest evidence available without a
+human, and it is still inference. The tool records the agreement and leaves the
+decision to you.
 
 ---
 
@@ -281,6 +337,13 @@ The `cleaning` block in the prepared JSON records proof of conservatism:
 7. **The duplicate is still unresolved by machine** — two transcriptions agree,
    but a human should still listen and decide. That is the intended workflow,
    not a defect.
+8. **Confusable detection is calibration-limited.** It catches what is curated
+   plus single-edit slips. A two-edit error absent from `known_confusions` will
+   be missed, because the generic check cannot be made precise enough to catch
+   it. Adding entries to that list is the intended maintenance path.
+9. **Numbers are not validated.** The 10-minute sample contains `19.20`
+   (probably 1920) and `double bottom 69`. Price levels matter in a trading
+   lecture and nothing currently flags them. Worth a small Phase 2.1 addition.
 
 ---
 
@@ -289,17 +352,22 @@ The `cleaning` block in the prepared JSON records proof of conservatism:
 **Do not start Phase 3 without explicit approval.**
 
 1. **Listen to 0–23 s of the extracted video** and confirm whether Al Brooks
-   really says the opening sentence twice. The tooling deliberately stopped
-   short of deciding.
-2. **Fill in `persian` terminology** for the 10 terms named in the brief, with
+   really says the opening sentence twice. Three independent transcriptions
+   agree that he does; the tooling deliberately still stops short of deciding.
+2. **Listen to 279 s and 318 s of the 10-minute sample**, where `training range`
+   and `bare bar` / `bare body` were flagged. Confirming these turns the
+   curated entries into verified knowledge, and tells you whether more entries
+   are needed for this speaker.
+3. **Check the one ungrammatical spot** at ≈84 s ("there were problems with the
+   … it.") — the only gap that still looks like lost speech rather than a pause.
+4. **Fill in `persian` terminology** for the 10 terms named in the brief, with
    the trader's approval. This is the main input Phase 3 needs.
-3. **Decide the translation approach** (local model vs. API) and estimate cost
+5. **Decide the translation approach** (local model vs. API) and estimate cost
    for ~170 audio minutes before building anything.
-4. **Tune `QaThresholds`** on a longer sample (e.g. `--duration 600`) once
-   available, to confirm the duplicate and coverage heuristics hold up over 10
-   minutes rather than 30 seconds.
-5. **Decide how to handle `uncertain_review_required` segments in Phase 3** —
-   skip them, or translate and mark them.
+6. **Decide how to handle `uncertain_review_required` segments in Phase 3** —
+   skip them, or translate and mark them?
+7. **Consider a small number-validation check** before Phase 3, since price
+   levels are load-bearing in this material.
 
 ---
 

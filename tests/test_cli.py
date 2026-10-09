@@ -29,7 +29,7 @@ def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
     assert excinfo.value.code == 0
     out = capsys.readouterr().out
     assert __version__ in out
-    assert __version__ == "0.2.0"
+    assert __version__ == "0.3.0"
 
 
 def test_default_duration_is_documented() -> None:

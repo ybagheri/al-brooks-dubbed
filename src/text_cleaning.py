@@ -150,6 +150,43 @@ MAX_SIMILARITY_CHARS = 20_000
 _MAX_LENGTH_RATIO = 2.0
 
 
+def damerau_levenshtein(left: str, right: str, max_distance: int) -> int | None:
+    """Optimal string alignment distance, or ``None`` beyond ``max_distance``.
+
+    Adjacent transposition counts as one edit, which matters here: the classic
+    speech-to-text confusion "bare" / "bear" is a single transposition.
+
+    The length difference is a valid lower bound, so it is used as a cheap
+    rejection. The rest is plain dynamic programming; the distance is returned
+    untruncated and the caller applies its own threshold, because truncating
+    the matrix here produced silently wrong results in an earlier version.
+    """
+
+    if abs(len(left) - len(right)) > max_distance:
+        return None
+
+    rows = len(left) + 1
+    columns = len(right) + 1
+    # Two rolling rows plus one for transposition look-back.
+    previous_previous: list[int] = [0] * columns
+    previous = list(range(columns))
+    for i in range(1, rows):
+        current = [i] + [0] * len(right)
+        for j in range(1, columns):
+            cost = 0 if left[i - 1] == right[j - 1] else 1
+            current[j] = min(
+                previous[j] + 1,
+                current[j - 1] + 1,
+                previous[j - 1] + cost,
+            )
+            if i > 1 and j > 1 and left[i - 1] == right[j - 2] and left[i - 2] == right[j - 1]:
+                current[j] = min(current[j], previous_previous[j - 2] + 1)
+        previous_previous, previous = previous, current
+
+    distance = previous[len(right)]
+    return None if distance > max_distance else distance
+
+
 def similarity(left: str, right: str, max_chars: int = MAX_SIMILARITY_CHARS) -> float:
     """Return a 0.0-1.0 similarity ratio for two pieces of text.
 

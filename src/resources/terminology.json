@@ -7,6 +7,51 @@
     "require_word_boundaries": true,
     "prefer_longest_match": true
   },
+  "confusable_extra_anchors": [
+    "bear bar",
+    "bull bar",
+    "bear body",
+    "bull body",
+    "bear leg",
+    "bull leg",
+    "bear trend",
+    "bull trend",
+    "bear channel",
+    "bull channel",
+    "bear wedge",
+    "bull wedge",
+    "bear market",
+    "bull market",
+    "bear reversal",
+    "bull reversal",
+    "bear breakout",
+    "bull breakout",
+    "break up",
+    "break down",
+    "opening range",
+    "always in",
+    "price action",
+    "measured move",
+    "trend line",
+    "signal bar",
+    "second entry",
+    "spike and",
+    "double top",
+    "double bottom",
+    "head and"
+  ],
+  "known_confusions": [
+    {
+      "wrong": "training",
+      "right": "trading",
+      "note": "Heard in the BTR20140930 lecture: 'training range' should be 'trading range'. A homophone, and 'training range' is not a phrase. Would be translated as the wrong term."
+    },
+    {
+      "wrong": "bare",
+      "right": "bear",
+      "note": "Heard in the BTR20140930 lecture: 'bare bar' and 'bare body' should be 'bear bar' and 'bear body'. Speech-to-text renders the long 'a' as a short one."
+    }
+  ],
   "terms": [
     {
       "id": "wedge_bull_flag",

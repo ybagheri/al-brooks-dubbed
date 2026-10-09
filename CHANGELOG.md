@@ -5,6 +5,64 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-09
+
+Confusable-term detection, added after analysing a 10-minute sample of the real
+lecture. Phase 1 and Phase 2.0 behaviour is unchanged.
+
+### Added
+
+**Confusable term detection (`src/terminology.py`, `src/qa.py`)**
+
+- Detects readable-but-wrong technical terms, the errors most damaging for
+  translation. On the 10-minute sample of the real lecture the transcription
+  contained `training range` 6 times (should be `trading range`) and
+  `bare bar` / `bare body` 3 times (should be `bear bar` / `bear body`).
+  Translating those literally would produce a term the trader never used.
+- Reported as `confusable_term` at `medium` severity, attached to the exact
+  segments and time ranges, and surfaced in the prepared JSON under
+  `terminology_summary.known_confusions_detected` for the translation stage.
+  **Advisory only - the text is never changed.**
+- Two complementary mechanisms, because neither alone is precise:
+  1. `known_confusions` in `terminology.json` - a curated, human-approved list
+     the trader can extend without touching code;
+  2. anchored single-edit detection, where the neighbouring word must match a
+     known domain word exactly (`confusable_extra_anchors`).
+- `damerau_levenshtein()` in `src/text_cleaning.py`, with an exact length
+  prefilter and no unsafe early exit.
+
+**Calibration on real data**
+
+- `segment_gap` severity lowered from `medium` to `low`. The source is live
+  trading commentary, so multi-second pauses while charts are read are normal
+  and must not alarm. The explanation now says so.
+
+### Fixed
+
+- The first implementation of the anchored scan produced 196 false positives on
+  the 10-minute sample, because a broken early exit in the edit-distance
+  function returned distances far beyond the requested limit instead of
+  rejecting them. The distance function is now exact and tested against known
+  values.
+- Single-word edit distance was tried and abandoned: it cannot distinguish the
+  correct English "bulls", "reverse down" and "near the top" from real errors.
+  Anchoring on an exact neighbouring word is what makes the check usable.
+- A generic edit distance of two was also rejected: at two, "clear breakout" is
+  indistinguishable from the real "bare bar" mistake. The distance-two cases
+  are now curated data instead of a heuristic.
+
+### Tests
+
+55 new cases in `tests/test_confusables.py`, including a precision suite that
+asserts 14 ordinary English phrases are **not** flagged. Total: **418 passing**,
+no network access, no API charges. Ruff and mypy clean.
+
+### Performance
+
+Confusable detection is indexed on the anchor's second word, so the sweep is a
+single dictionary hit per position. A full 221,000-word transcript analyses in
+about 6 seconds.
+
 ## [0.2.0] - 2026-10-09
 
 Phase 2: transcript quality assurance and preparation for translation.
@@ -264,5 +322,6 @@ verified end to end against a real lecture video.
 - The Groq free tier limits audio minutes per day, which matters for later
   full-length phases but not for a 30-second test.
 
+[0.3.0]: https://example.invalid/al-brooks-dubbed/releases/0.3.0
 [0.2.0]: https://example.invalid/al-brooks-dubbed/releases/0.2.0
 [0.1.0]: https://example.invalid/al-brooks-dubbed/releases/0.1.0
